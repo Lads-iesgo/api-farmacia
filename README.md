@@ -4,7 +4,7 @@ Este projeto é um aplicativo web desenvolvido com React native e TypeScript, de
 
 Repositório Git
 
-O código-fonte deste projeto está hospedado no GitHub: https://github.com/VITORHUGORDM/app-farmacia
+O código-fonte deste projeto está hospedado no GitHub: https://github.com/Lads-iesgo/app-farmacia
 Tecnologias Utilizadas
 
     React Native: Framework React para desenvolvimento de aplicações web modernas.
@@ -22,7 +22,7 @@ Configuração do Projeto
 
 Clone o repositório:
 
-git clone (https://github.com/VITORHUGORDM/app-farmacia.git)
+git clone https://github.com/Lads-iesgo/app-farmacia
 
 cd app-farmacia
 
