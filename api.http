@@ -1,0 +1,18 @@
+### 1. Testar: Esqueci a Senha
+POST http://localhost:3333/esqueci-senha
+Content-Type: application/json
+
+{
+  "email": "kevin@teste.com"
+}
+
+### --------------------------------------
+
+### 2. Testar: Redefinir Senha
+POST http://localhost:3333/redefinir-senha
+Content-Type: application/json
+
+{
+  "token": "837524418b7b400d93428f1dd00c99ca418f1b4c1b02c36d2462c65e797a61d8",
+  "novaSenha": "1234"
+}

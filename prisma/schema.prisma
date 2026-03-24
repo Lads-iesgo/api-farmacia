@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model adesao_medicamentos {
+  id_adesao     Int                        @id @default(autoincrement())
+  id_tratamento Int
+  id_paciente   Int
+  data_prevista DateTime                   @db.DateTime(0)
+  data_tomada   DateTime?                  @db.DateTime(0)
+  status        adesao_medicamentos_status @default(PENDENTE)
+  observacoes   String?                    @db.Text
+  registrado_em DateTime                   @default(now()) @db.Timestamp(0)
+  pacientes     pacientes                  @relation(fields: [id_paciente], references: [id_paciente], map: "fk_adesao_paciente")
+  tratamentos   tratamentos                @relation(fields: [id_tratamento], references: [id_tratamento], map: "fk_adesao_tratamento")
+  notificacoes  notificacoes[]
+
+  @@index([id_paciente], map: "idx_adesao_paciente")
+  @@index([id_tratamento], map: "idx_adesao_tratamento")
+}
+
+model auditoria {
+  id_auditoria           Int                     @id @default(autoincrement())
+  id_usuario             Int
+  tabela_modificada      String?                 @db.VarChar(50)
+  id_registro_modificado Int?
+  tipo_operacao          auditoria_tipo_operacao
+  dados_anteriores       String?                 @db.LongText
+  dados_novos            String?                 @db.LongText
+  ip_address             String?                 @db.VarChar(45)
+  data_operacao          DateTime                @default(now()) @db.Timestamp(0)
+  usuarios               usuarios                @relation(fields: [id_usuario], references: [id_usuario], map: "fk_auditoria_usuario")
+
+  @@index([id_usuario], map: "idx_auditoria_usuario")
+}
+
+model medicamentos {
+  id_medicamento     Int           @id @default(autoincrement())
+  nome_medicamento   String        @unique(map: "uk_medicamentos_nome") @db.VarChar(150)
+  principio_ativo    String?       @db.VarChar(150)
+  dosagem            String?       @db.VarChar(50)
+  apresentacao       String?       @db.VarChar(100)
+  fabricante         String?       @db.VarChar(100)
+  lote               String?       @db.VarChar(50)
+  data_validade      DateTime?     @db.Date
+  descricao          String?       @db.Text
+  efeitos_colaterais String?       @db.Text
+  data_cadastro      DateTime      @default(now()) @db.Timestamp(0)
+  ativo              Boolean       @default(true)
+  tratamentos        tratamentos[]
+}
+
+model notificacoes {
+  id_notificacao      Int                  @id @default(autoincrement())
+  id_paciente         Int
+  id_adesao           Int?
+  tipo                notificacoes_tipo    @default(LEMBRETE)
+  titulo              String?              @db.VarChar(150)
+  mensagem            String               @db.Text
+  data_agendada       DateTime             @db.DateTime(0)
+  data_envio          DateTime?            @db.DateTime(0)
+  lido                Boolean              @default(false)
+  canal               notificacoes_canal   @default(SISTEMA)
+  data_criacao        DateTime             @default(now()) @db.Timestamp(0)
+  adesao_medicamentos adesao_medicamentos? @relation(fields: [id_adesao], references: [id_adesao], map: "fk_notificacoes_adesao")
+  pacientes           pacientes            @relation(fields: [id_paciente], references: [id_paciente], map: "fk_notificacoes_paciente")
+
+  @@index([id_adesao], map: "idx_notificacoes_adesao")
+  @@index([id_paciente], map: "idx_notificacoes_paciente")
+}
+
+model pacientes {
+  id_paciente          Int                   @id @default(autoincrement())
+  id_usuario           Int                   @unique(map: "uk_pacientes_id_usuario")
+  numero_identificacao String                @unique(map: "uk_pacientes_numero_identificacao") @db.VarChar(20)
+  data_nascimento      DateTime?             @db.Date
+  genero               pacientes_genero      @default(OUTRO)
+  endereco             String?               @db.VarChar(255)
+  cidade               String?               @db.VarChar(100)
+  estado               String?               @db.VarChar(2)
+  cep                  String?               @db.VarChar(10)
+  historico_medico     String?               @db.Text
+  alergias             String?               @db.Text
+  data_registro        DateTime              @default(now()) @db.Timestamp(0)
+  adesao_medicamentos  adesao_medicamentos[]
+  notificacoes         notificacoes[]
+  usuarios             usuarios              @relation(fields: [id_usuario], references: [id_usuario], map: "fk_pacientes_usuario")
+  permissoes_alunos    permissoes_alunos[]
+  tratamentos          tratamentos[]
+}
+
+model permissoes_alunos {
+  id_permissao                                                   Int       @id @default(autoincrement())
+  id_aluno                                                       Int
+  id_paciente                                                    Int
+  id_coordenador_vinculador                                      Int?
+  data_vinculacao                                                DateTime  @default(now()) @db.Timestamp(0)
+  ativa                                                          Boolean   @default(true)
+  usuarios_permissoes_alunos_id_alunoTousuarios                  usuarios  @relation("permissoes_alunos_id_alunoTousuarios", fields: [id_aluno], references: [id_usuario], map: "fk_permissao_aluno")
+  usuarios_permissoes_alunos_id_coordenador_vinculadorTousuarios usuarios? @relation("permissoes_alunos_id_coordenador_vinculadorTousuarios", fields: [id_coordenador_vinculador], references: [id_usuario], map: "fk_permissao_coordenador")
+  pacientes                                                      pacientes @relation(fields: [id_paciente], references: [id_paciente], map: "fk_permissao_paciente")
+
+  @@unique([id_aluno, id_paciente], map: "uk_permissao_aluno_paciente")
+  @@index([id_coordenador_vinculador], map: "idx_permissao_coord")
+  @@index([id_paciente], map: "idx_permissao_paciente")
+}
+
+model tokens_recuperacao {
+  id_token    Int       @id @default(autoincrement())
+  id_usuario  Int
+  token       String    @unique(map: "uk_tokens_recuperacao_token") @db.VarChar(255)
+  criado_em   DateTime  @default(now()) @db.Timestamp(0)
+  expira_em   DateTime  @db.DateTime(0)
+  usado_em    DateTime? @db.DateTime(0)
+  revogado_em DateTime? @db.DateTime(0)
+  usuarios    usuarios  @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, map: "fk_tokens_recuperacao_usuario")
+
+  @@index([expira_em], map: "idx_tokens_recuperacao_expira_em")
+  @@index([id_usuario], map: "idx_tokens_recuperacao_usuario")
+}
+
+model tratamentos {
+  id_tratamento           Int                   @id @default(autoincrement())
+  id_paciente             Int
+  id_medicamento          Int
+  id_usuario_criador      Int
+  data_inicio             DateTime              @db.Date
+  data_fim                DateTime?             @db.Date
+  frequencia              String                @db.VarChar(100)
+  dosagem_prescrita       String?               @db.VarChar(100)
+  motivo_tratamento       String?               @db.Text
+  instrucoes_especiais    String?               @db.Text
+  status                  tratamentos_status    @default(ATIVO)
+  data_criacao            DateTime              @default(now()) @db.Timestamp(0)
+  data_ultima_atualizacao DateTime              @default(now()) @db.Timestamp(0)
+  adesao_medicamentos     adesao_medicamentos[]
+  medicamentos            medicamentos          @relation(fields: [id_medicamento], references: [id_medicamento], map: "fk_tratamentos_medicamento")
+  pacientes               pacientes             @relation(fields: [id_paciente], references: [id_paciente], map: "fk_tratamentos_paciente")
+  usuarios                usuarios              @relation(fields: [id_usuario_criador], references: [id_usuario], map: "fk_tratamentos_usuario_criador")
+
+  @@index([id_usuario_criador], map: "idx_tratamentos_criador")
+  @@index([id_medicamento], map: "idx_tratamentos_medicamento")
+  @@index([id_paciente], map: "idx_tratamentos_paciente")
+}
+
+model usuarios {
+  id_usuario                                                              Int                   @id @default(autoincrement())
+  nome                                                                    String                @db.VarChar(150)
+  email                                                                   String                @unique(map: "uk_usuarios_email") @db.VarChar(100)
+  senha                                                                   String                @db.VarChar(255)
+  tipo_usuario                                                            usuarios_tipo_usuario
+  telefone                                                                String?               @db.VarChar(20)
+  data_cadastro                                                           DateTime              @default(now()) @db.Timestamp(0)
+  ativo                                                                   Boolean               @default(true)
+  ultimo_acesso                                                           DateTime?             @db.Timestamp(0)
+  auditoria                                                               auditoria[]
+  pacientes                                                               pacientes?
+  permissoes_alunos_permissoes_alunos_id_alunoTousuarios                  permissoes_alunos[]   @relation("permissoes_alunos_id_alunoTousuarios")
+  permissoes_alunos_permissoes_alunos_id_coordenador_vinculadorTousuarios permissoes_alunos[]   @relation("permissoes_alunos_id_coordenador_vinculadorTousuarios")
+  tokens_recuperacao                                                      tokens_recuperacao[]
+  tratamentos                                                             tratamentos[]
+}
+
+enum notificacoes_tipo {
+  LEMBRETE
+  ALARME
+  INFORME
+}
+
+enum auditoria_tipo_operacao {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+enum pacientes_genero {
+  M
+  F
+  OUTRO
+}
+
+enum usuarios_tipo_usuario {
+  COORDENADOR
+  ALUNO
+  PACIENTE
+}
+
+enum adesao_medicamentos_status {
+  PENDENTE
+  TOMADO
+  PERDIDO
+  ADIADO
+}
+
+enum notificacoes_canal {
+  EMAIL
+  SMS
+  PUSH
+  SISTEMA
+}
+
+enum tratamentos_status {
+  ATIVO
+  PAUSADO
+  FINALIZADO
+}
