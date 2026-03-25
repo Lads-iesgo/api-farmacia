@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 const formatarCpf = (valor: string) => {
   const numeros = valor.replace(/\D/g, "").slice(0, 11);
@@ -42,60 +42,105 @@ const formatarData = (valor: string) => {
     .replace(/(\d{2})(\d)/, "$1/$2");
 };
 
+const converterDataParaISO = (data: string): string => {
+  const partes = data.split("/");
+  if (partes.length === 3) {
+    return `${partes[2]}-${partes[1]}-${partes[0]}`;
+  }
+  return data;
+};
+
 const validarEmail = (valor: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 
 export default function EditarPacienteScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { pacientes, updatePaciente } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [dataNascimento, setDataNascimento] = useState("");
-  const [email, setEmail] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [endereco, setEndereco] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    numero_identificacao: "",
+    data_nascimento: "",
+    email: "",
+    telefone: "",
+    endereco: "",
+  });
+
+  const carregarPaciente = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const response = await api.get(`/pacientes/${id}`);
+      const paciente =
+        response.data?.paciente || response.data?.data || response.data;
+
+      if (!paciente || typeof paciente !== "object") {
+        Alert.alert("Erro", "Paciente não encontrado ou dados inválidos");
+        router.back();
+        return;
+      }
+
+      setForm({
+        nome: paciente.usuario?.nome || paciente.nome || "",
+        numero_identificacao: paciente.numero_identificacao || "",
+        data_nascimento: paciente.data_nascimento || "",
+        email: paciente.email || "",
+        telefone: paciente.telefone || "",
+        endereco: paciente.endereco || "",
+      });
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar paciente";
+      Alert.alert("Erro", mensagem);
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (id) {
-      const paciente = pacientes.find((p) => p.id === id);
-      if (paciente) {
-        setNome(paciente.nome);
-        setCpf(paciente.cpf);
-        setDataNascimento(paciente.dataNascimento);
-        setEmail(paciente.email || "");
-        setTelefone(paciente.telefone);
-        setEndereco(paciente.endereco || "");
-      } else {
-        Alert.alert("Erro", "Paciente não encontrado");
-        router.back();
-      }
-    }
+    carregarPaciente();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleAtualizar = () => {
-    if (!nome || !cpf || !dataNascimento) {
+  const handleAtualizar = async () => {
+    if (!form.nome || !form.numero_identificacao || !form.data_nascimento) {
       Alert.alert("Erro", "Preencha pelo menos Nome, CPF e Data de Nascimento");
       return;
     }
 
-    if (email && !validarEmail(email)) {
+    if (form.email && !validarEmail(form.email)) {
       Alert.alert("Erro", "E-mail inválido. Use o formato exemplo@dominio.com");
       return;
     }
 
-    if (id && typeof id === "string") {
-      updatePaciente(id, {
-        nome,
-        cpf,
-        dataNascimento,
-        email,
-        telefone,
-        endereco,
+    if (!id || typeof id !== "string") return;
+
+    try {
+      setLoading(true);
+      await api.put(`/pacientes/${id}`, {
+        nome: form.nome,
+        numero_identificacao: form.numero_identificacao,
+        data_nascimento: converterDataParaISO(form.data_nascimento),
+        email: form.email || null,
+        telefone: form.telefone || null,
+        endereco: form.endereco || null,
       });
+      Alert.alert("Sucesso", "Paciente atualizado com sucesso!");
       router.push("/pacientes");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao atualizar paciente";
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -128,24 +173,28 @@ export default function EditarPacienteScreen() {
           <FormInput
             label="Nome completo"
             placeholder="Digite o nome completo"
-            value={nome}
-            onChangeText={setNome}
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
             label="CPF"
             placeholder="000.000.000-00"
             keyboardType="numeric"
-            value={cpf}
-            onChangeText={(v) => setCpf(formatarCpf(v))}
+            value={form.numero_identificacao}
+            onChangeText={(v) =>
+              setForm({ ...form, numero_identificacao: formatarCpf(v) })
+            }
           />
 
           <FormInput
             label="Data de nascimento"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataNascimento}
-            onChangeText={(v) => setDataNascimento(formatarData(v))}
+            value={form.data_nascimento}
+            onChangeText={(v) =>
+              setForm({ ...form, data_nascimento: formatarData(v) })
+            }
           />
 
           <FormInput
@@ -153,36 +202,42 @@ export default function EditarPacienteScreen() {
             placeholder="email@exemplo.com"
             keyboardType="email-address"
             autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            value={form.email}
+            onChangeText={(v) => setForm({ ...form, email: v })}
           />
 
           <FormInput
             label="Telefone"
             placeholder="(11) 98765-4321"
             keyboardType="phone-pad"
-            value={telefone}
-            onChangeText={(v) => setTelefone(formatarTelefone(v))}
+            value={form.telefone}
+            onChangeText={(v) =>
+              setForm({ ...form, telefone: formatarTelefone(v) })
+            }
           />
 
           <FormInput
             label="Endereço completo"
             placeholder="Rua, número, bairro, cidade, estado"
-            value={endereco}
-            onChangeText={setEndereco}
+            value={form.endereco}
+            onChangeText={(v) => setForm({ ...form, endereco: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleAtualizar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Atualizar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Atualizando..." : "Atualizar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/pacientes")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -204,11 +259,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   formSectionTitle: {
     fontSize: 16,
@@ -223,6 +275,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,

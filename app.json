@@ -4,11 +4,11 @@
     "slug": "app-farmacia",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "",
+    "icon": "./assets/images/logo-farmacia.png",
     "scheme": "appfarmacia",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "",
+      "image": "./assets/images/logo-farmacia.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "",
+        "foregroundImage": "./assets/images/logo-farmacia.png",
         "backgroundImage": "",
         "monochromeImage": ""
       },
@@ -26,8 +26,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": ""
+      "output": "server",
+      "favicon": "./assets/images/logo-farmacia.png"
     },
     "plugins": ["expo-router"],
     "experiments": {

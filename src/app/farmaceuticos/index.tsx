@@ -1,7 +1,8 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Plus, Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -14,27 +15,72 @@ import { Colors } from "../_components/Colors";
 import Header from "../_components/Header";
 import ItemLista from "../_components/ItemLista";
 import ModalExclusao from "../_components/ModalExclusao";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 export default function FarmaceuticosScreen() {
-  const { farmaceuticos, deleteFarmaceutico } = useApp();
+  const [farmaceuticos, setFarmaceuticos] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleEditClick = (id: string) => {
-    router.push({ pathname: "/farmaceuticos/editar", params: { id } });
+  const listarFarmaceuticos = useCallback(async (skip = 0, take = 50) => {
+    try {
+      setLoading(true);
+      const response = await api.get("/farmaceuticos", {
+        params: { skip, take },
+      });
+      const dados = response.data.farmaceuticos || response.data;
+      if (dados && Array.isArray(dados)) {
+        setFarmaceuticos(dados);
+      }
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar farmacêuticos";
+      console.error("❌ Erro:", mensagem);
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      listarFarmaceuticos();
+    }, [listarFarmaceuticos]),
+  );
+
+  const handleEditClick = (id: string | undefined) => {
+    if (id) {
+      router.push({ pathname: "/farmaceuticos/editar", params: { id } });
+    }
   };
 
-  const handleDeleteClick = (id: string) => {
-    setItemToDelete(id);
-    setModalVisible(true);
+  const handleDeleteClick = (id: string | undefined) => {
+    if (id) {
+      setItemToDelete(id);
+      setModalVisible(true);
+    }
   };
 
-  const confirmarExclusao = () => {
+  const confirmarExclusao = async () => {
     if (itemToDelete) {
-      deleteFarmaceutico(itemToDelete);
+      try {
+        await api.delete(`/farmaceuticos/${itemToDelete}`);
+        Alert.alert("Sucesso", "Farmacêutico deletado");
+        listarFarmaceuticos();
+      } catch (error: any) {
+        const mensagem =
+          error.response?.data?.erro ||
+          error.response?.data?.message ||
+          error.message ||
+          "Falha ao deletar farmacêutico";
+        Alert.alert("Erro", mensagem);
+      }
     }
     setModalVisible(false);
     setItemToDelete(null);
@@ -42,8 +88,10 @@ export default function FarmaceuticosScreen() {
 
   const filteredFarmaceuticos = farmaceuticos.filter(
     (f) =>
-      f.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      f.especialidade.toLowerCase().includes(busca.toLowerCase()),
+      (f.nome?.toLowerCase?.().includes(busca.toLowerCase()) ||
+        f.email?.toLowerCase?.().includes(busca.toLowerCase()) ||
+        f.telefone?.includes(busca)) ??
+      false,
   );
 
   return (
@@ -54,7 +102,7 @@ export default function FarmaceuticosScreen() {
         <View style={styles.pageHeader}>
           <Text style={styles.pageTitle}>Farmacêuticos</Text>
           <Text style={styles.pageSubtitle}>
-            Gerencie os farmacêuticos cadastrados
+            Gerencie os profissionais farmacêuticos
           </Text>
         </View>
 
@@ -86,7 +134,11 @@ export default function FarmaceuticosScreen() {
 
           <FlatList
             data={filteredFarmaceuticos}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) =>
+              item.id_farmaceutico
+                ? String(item.id_farmaceutico)
+                : String(index)
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContainer}
             ListEmptyComponent={
@@ -103,14 +155,21 @@ export default function FarmaceuticosScreen() {
             renderItem={({ item, index }) => (
               <ItemLista
                 data={[
-                  { label: "Nome", value: item.nome },
-                  { label: "E-mail", value: item.email || "" },
-                  { label: "Telefone", value: item.telefone },
-                  { label: "Especialidade", value: item.especialidade },
+                  {
+                    label: "Nome",
+                    value: item.nome || "N/A",
+                  },
+                  { label: "Email", value: item.email || "N/A" },
+                  { label: "Telefone", value: item.telefone || "N/A" },
+                  {
+                    label: "Especialidade",
+                    value: item.especialidade || "N/A",
+                  },
+                  { label: "CRF", value: item.crf || "N/A" },
                 ]}
                 isLast={index === filteredFarmaceuticos.length - 1}
-                onEdit={() => handleEditClick(item.id)}
-                onDelete={() => handleDeleteClick(item.id)}
+                onEdit={() => handleEditClick(String(item.id_farmaceutico))}
+                onDelete={() => handleDeleteClick(String(item.id_farmaceutico))}
               />
             )}
           />

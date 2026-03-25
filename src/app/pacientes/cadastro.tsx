@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useState } from "react";
@@ -13,7 +14,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import SelectField from "../_components/Select";
+import api from "../services/api";
+
+const formatarData = (valor: string) => {
+  const numeros = valor.replace(/\D/g, "").slice(0, 8);
+  return numeros
+    .replace(/(\d{2})(\d)/, "$1/$2")
+    .replace(/(\d{2})(\d)/, "$1/$2");
+};
 
 const formatarCpf = (valor: string) => {
   const numeros = valor.replace(/\D/g, "").slice(0, 11);
@@ -23,60 +32,131 @@ const formatarCpf = (valor: string) => {
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 };
 
-const formatarTelefone = (valor: string) => {
-  const numeros = valor.replace(/\D/g, "").slice(0, 11);
-  if (numeros.length <= 10) {
-    return numeros
-      .replace(/(\d{2})(\d)/, "($1) $2")
-      .replace(/(\d{4})(\d)/, "$1-$2");
+const decodificarToken = (token: string) => {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const decoded = JSON.parse(atob(parts[1]));
+    return decoded;
+  } catch {
+    return null;
   }
-  return numeros
-    .replace(/(\d{2})(\d)/, "($1) $2")
-    .replace(/(\d{5})(\d)/, "$1-$2");
 };
 
-const formatarData = (valor: string) => {
-  const numeros = valor.replace(/\D/g, "").slice(0, 8);
-  return numeros
-    .replace(/(\d{2})(\d)/, "$1/$2")
-    .replace(/(\d{2})(\d)/, "$1/$2");
+const converterDataParaISO = (data: string) => {
+  if (!data || data.length < 10) return null;
+  const [dia, mes, ano] = data.split("/");
+  return `${ano}-${mes}-${dia}`;
 };
-
-const validarEmail = (valor: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
 
 export default function CadastroPacienteScreen() {
   const router = useRouter();
-  const { addPaciente } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [dataNascimento, setDataNascimento] = useState("");
-  const [email, setEmail] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [endereco, setEndereco] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    numeroIdentificacao: "",
+    dataNascimento: "",
+    genero: "",
+    endereco: "",
+    cidade: "",
+    estado: "",
+    cep: "",
+    historicoMedico: "",
+    alergias: "",
+  });
 
-  const handleCadastrar = () => {
-    if (!nome || !cpf || !dataNascimento) {
-      Alert.alert("Erro", "Preencha pelo menos Nome, CPF e Data de Nascimento");
+  const handleCadastrar = async () => {
+    if (!form.nome || !form.numeroIdentificacao) {
+      Alert.alert("Erro", "Preencha nome e CPF");
       return;
     }
 
-    if (email && !validarEmail(email)) {
-      Alert.alert("Erro", "E-mail inválido. Use o formato exemplo@dominio.com");
-      return;
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem("authToken");
+      if (!token) {
+        Alert.alert("Erro", "Token não encontrado. Faça login novamente");
+        setLoading(false);
+        return;
+      }
+
+      const decoded = decodificarToken(token);
+      const idUsuario = decoded?.id || decoded?.id_usuario || decoded?.sub;
+
+      if (!idUsuario) {
+        Alert.alert("Erro", "ID do usuário não encontrado no token");
+        setLoading(false);
+        return;
+      }
+
+      await api.post("/pacientes", {
+        nome: form.nome,
+        numero_identificacao: form.numeroIdentificacao,
+        data_nascimento: converterDataParaISO(form.dataNascimento),
+        genero: form.genero || null,
+        endereco: form.endereco || null,
+        cidade: form.cidade || null,
+        estado: form.estado || null,
+        cep: form.cep || null,
+        historico_medico: form.historicoMedico || null,
+        alergias: form.alergias || null,
+      });
+
+      Alert.alert("Sucesso", "Paciente cadastrado");
+      router.push("/pacientes");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao cadastrar paciente";
+      console.error("❌ Erro:", mensagem);
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    addPaciente({
-      nome,
-      cpf,
-      dataNascimento,
-      email,
-      telefone,
-      endereco,
-    });
+  const generoOptions = [
+    { label: "Masculino", value: "M" },
+    { label: "Feminino", value: "F" },
+    { label: "Outro", value: "O" },
+  ];
 
-    router.push("/pacientes");
+  const estadosOptions = [
+    { label: "Acre", value: "AC" },
+    { label: "Alagoas", value: "AL" },
+    { label: "Amapá", value: "AP" },
+    { label: "Amazonas", value: "AM" },
+    { label: "Bahia", value: "BA" },
+    { label: "Ceará", value: "CE" },
+    { label: "Distrito Federal", value: "DF" },
+    { label: "Espírito Santo", value: "ES" },
+    { label: "Goiás", value: "GO" },
+    { label: "Maranhão", value: "MA" },
+    { label: "Mato Grosso", value: "MT" },
+    { label: "Mato Grosso do Sul", value: "MS" },
+    { label: "Minas Gerais", value: "MG" },
+    { label: "Pará", value: "PA" },
+    { label: "Paraíba", value: "PB" },
+    { label: "Paraná", value: "PR" },
+    { label: "Pernambuco", value: "PE" },
+    { label: "Piauí", value: "PI" },
+    { label: "Rio de Janeiro", value: "RJ" },
+    { label: "Rio Grande do Norte", value: "RN" },
+    { label: "Rio Grande do Sul", value: "RS" },
+    { label: "Rondônia", value: "RO" },
+    { label: "Roraima", value: "RR" },
+    { label: "Santa Catarina", value: "SC" },
+    { label: "São Paulo", value: "SP" },
+    { label: "Sergipe", value: "SE" },
+    { label: "Tocantins", value: "TO" },
+  ];
+
+  const formatarCep = (valor: string) => {
+    const numeros = valor.replace(/\D/g, "").slice(0, 8);
+    return numeros.replace(/(\d{5})(\d)/, "$1-$2");
   };
 
   return (
@@ -95,7 +175,7 @@ export default function CadastroPacienteScreen() {
             <ArrowLeft size={24} color={Colors.text} />
           </TouchableOpacity>
           <View>
-            <Text style={styles.pageTitle}>Cadastrar pacientes</Text>
+            <Text style={styles.pageTitle}>Cadastrar paciente</Text>
             <Text style={styles.pageSubtitle}>
               Preencha os dados do novo paciente
             </Text>
@@ -106,63 +186,103 @@ export default function CadastroPacienteScreen() {
           <Text style={styles.formSectionTitle}>Informações do paciente</Text>
 
           <FormInput
-            label="Nome completo"
-            placeholder="Digite o nome completo"
-            value={nome}
-            onChangeText={setNome}
+            label="Nome"
+            placeholder="Nome completo"
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
-            label="CPF"
+            label="CPF *"
             placeholder="000.000.000-00"
             keyboardType="numeric"
-            value={cpf}
-            onChangeText={(v) => setCpf(formatarCpf(v))}
+            value={form.numeroIdentificacao}
+            onChangeText={(v) =>
+              setForm({ ...form, numeroIdentificacao: formatarCpf(v) })
+            }
           />
 
           <FormInput
-            label="Data de nascimento"
+            label="Data de Nascimento"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataNascimento}
-            onChangeText={(v) => setDataNascimento(formatarData(v))}
+            value={form.dataNascimento}
+            onChangeText={(v) =>
+              setForm({ ...form, dataNascimento: formatarData(v) })
+            }
+          />
+
+          <SelectField
+            label="Gênero"
+            placeholder="Selecione o gênero"
+            value={form.genero}
+            options={generoOptions}
+            onSelect={(v: string) => setForm({ ...form, genero: v })}
           />
 
           <FormInput
-            label="E-mail"
-            placeholder="email@exemplo.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            label="Endereço"
+            placeholder="Rua, número, bairro"
+            value={form.endereco}
+            onChangeText={(v) => setForm({ ...form, endereco: v })}
           />
 
           <FormInput
-            label="Telefone"
-            placeholder="(11) 98765-4321"
-            keyboardType="phone-pad"
-            value={telefone}
-            onChangeText={(v) => setTelefone(formatarTelefone(v))}
+            label="Cidade"
+            placeholder="Sua cidade"
+            value={form.cidade}
+            onChangeText={(v) => setForm({ ...form, cidade: v })}
+          />
+
+          <SelectField
+            label="Estado"
+            placeholder="Selecione o estado"
+            value={form.estado}
+            options={estadosOptions}
+            onSelect={(v: string) => setForm({ ...form, estado: v })}
           />
 
           <FormInput
-            label="Endereço completo"
-            placeholder="Rua, número, bairro, cidade, estado"
-            value={endereco}
-            onChangeText={setEndereco}
+            label="CEP"
+            placeholder="00000-000"
+            keyboardType="numeric"
+            value={form.cep}
+            onChangeText={(v) => setForm({ ...form, cep: formatarCep(v) })}
+          />
+
+          <FormInput
+            label="Histórico Médico"
+            placeholder="Doenças anteriores, etc."
+            multiline
+            style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
+            value={form.historicoMedico}
+            onChangeText={(v) => setForm({ ...form, historicoMedico: v })}
+          />
+
+          <FormInput
+            label="Alergias"
+            placeholder="Descreva alergias conhecidas"
+            multiline
+            style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
+            value={form.alergias}
+            onChangeText={(v) => setForm({ ...form, alergias: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleCadastrar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Cadastrar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Cadastrando..." : "Cadastrar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/pacientes")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -199,6 +319,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {

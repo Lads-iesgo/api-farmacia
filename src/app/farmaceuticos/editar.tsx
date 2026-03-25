@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 const formatarTelefone = (valor: string) => {
   const numeros = valor.replace(/\D/g, "").slice(0, 11);
@@ -33,47 +33,85 @@ const validarEmail = (valor: string) =>
 export default function EditarFarmaceuticoScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { farmaceuticos, updateFarmaceutico } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [especialidade, setEspecialidade] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    email: "",
+    telefone: "",
+    especialidade: "",
+  });
+
+  const carregarFarmaceutico = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const response = await api.get(`/farmaceuticos/${id}`);
+      const farmaceutico =
+        response.data?.farmaceutico || response.data?.data || response.data;
+
+      if (!farmaceutico || typeof farmaceutico !== "object") {
+        Alert.alert("Erro", "Farmacêutico não encontrado ou dados inválidos");
+        router.back();
+        return;
+      }
+
+      setForm({
+        nome: farmaceutico.nome || "",
+        email: farmaceutico.email || "",
+        telefone: farmaceutico.telefone || "",
+        especialidade: farmaceutico.especialidade || "",
+      });
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar farmacêutico";
+      Alert.alert("Erro", mensagem);
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (id) {
-      const farmaceutico = farmaceuticos.find((f) => f.id === id);
-      if (farmaceutico) {
-        setNome(farmaceutico.nome);
-        setEmail(farmaceutico.email || "");
-        setTelefone(farmaceutico.telefone);
-        setEspecialidade(farmaceutico.especialidade);
-      } else {
-        Alert.alert("Erro", "Farmacêutico não encontrado");
-      }
-    }
+    carregarFarmaceutico();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleAtualizar = () => {
-    if (!nome || !especialidade) {
+  const handleAtualizar = async () => {
+    if (!form.nome || !form.especialidade) {
       Alert.alert("Erro", "Preencha pelo menos Nome e Especialidade");
       return;
     }
 
-    if (email && !validarEmail(email)) {
+    if (form.email && !validarEmail(form.email)) {
       Alert.alert("Erro", "E-mail inválido. Use o formato exemplo@dominio.com");
       return;
     }
 
-    if (id && typeof id === "string") {
-      updateFarmaceutico(id, {
-        nome,
-        email,
-        telefone,
-        especialidade,
+    if (!id || typeof id !== "string") return;
+
+    try {
+      setLoading(true);
+      await api.put(`/farmaceuticos/${id}`, {
+        nome: form.nome,
+        email: form.email || null,
+        telefone: form.telefone || null,
+        especialidade: form.especialidade,
       });
+      Alert.alert("Sucesso", "Farmacêutico atualizado com sucesso!");
       router.push("/farmaceuticos");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao atualizar farmacêutico";
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -108,8 +146,8 @@ export default function EditarFarmaceuticoScreen() {
           <FormInput
             label="Nome completo"
             placeholder="Digite o nome completo"
-            value={nome}
-            onChangeText={setNome}
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
@@ -117,36 +155,42 @@ export default function EditarFarmaceuticoScreen() {
             placeholder="email@exemplo.com"
             keyboardType="email-address"
             autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            value={form.email}
+            onChangeText={(v) => setForm({ ...form, email: v })}
           />
 
           <FormInput
             label="Telefone"
             placeholder="(11) 98765-4321"
             keyboardType="phone-pad"
-            value={telefone}
-            onChangeText={(v) => setTelefone(formatarTelefone(v))}
+            value={form.telefone}
+            onChangeText={(v) =>
+              setForm({ ...form, telefone: formatarTelefone(v) })
+            }
           />
 
           <FormInput
             label="Especialidade"
             placeholder="Ex: Farmácia Clínica"
-            value={especialidade}
-            onChangeText={setEspecialidade}
+            value={form.especialidade}
+            onChangeText={(v) => setForm({ ...form, especialidade: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleAtualizar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Atualizar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Atualizando..." : "Atualizar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/farmaceuticos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -168,11 +212,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   formSectionTitle: {
     fontSize: 16,
@@ -187,6 +228,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,

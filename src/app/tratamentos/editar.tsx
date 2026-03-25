@@ -1,11 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, ChevronDown } from "lucide-react-native";
+import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  FlatList,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,7 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import Select from "../_components/Select";
+import api from "../services/api";
 
 const formatarData = (valor: string) => {
   const numeros = valor.replace(/\D/g, "").slice(0, 8);
@@ -25,124 +23,108 @@ const formatarData = (valor: string) => {
     .replace(/(\d{2})(\d)/, "$1/$2");
 };
 
-function SelectField({
-  label,
-  placeholder,
-  value,
-  options,
-  onSelect,
-  required,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onSelect: (val: string) => void;
-  required?: boolean;
-}) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <View style={selectStyles.wrapper}>
-      <Text style={selectStyles.label}>
-        {label}
-        {required ? " *" : ""}
-      </Text>
-      <TouchableOpacity
-        style={selectStyles.trigger}
-        onPress={() => setVisible(true)}
-        activeOpacity={0.7}
-      >
-        <Text
-          style={[selectStyles.triggerText, !value && selectStyles.placeholder]}
-        >
-          {value || placeholder}
-        </Text>
-        <ChevronDown size={18} color={Colors.textSecondary} />
-      </TouchableOpacity>
-      <Modal visible={visible} transparent animationType="fade">
-        <Pressable
-          style={selectStyles.overlay}
-          onPress={() => setVisible(false)}
-        >
-          <View style={selectStyles.modal}>
-            <Text style={selectStyles.modalTitle}>{label}</Text>
-            <FlatList
-              data={options}
-              keyExtractor={(item) => item.value}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    selectStyles.option,
-                    item.value === value && selectStyles.optionSelected,
-                  ]}
-                  onPress={() => {
-                    onSelect(item.value);
-                    setVisible(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      selectStyles.optionText,
-                      item.value === value && selectStyles.optionTextSelected,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text style={selectStyles.emptyText}>
-                  Nenhum item cadastrado
-                </Text>
-              }
-            />
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  );
-}
+const converterDataParaISO = (data: string): string => {
+  const partes = data.split("/");
+  if (partes.length === 3) {
+    return `${partes[2]}-${partes[1]}-${partes[0]}`;
+  }
+  return data;
+};
 
 export default function EditarTratamentoScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const {
-    tratamentos,
-    updateTratamento,
-    pacientes,
-    medicamentos,
-    farmaceuticos,
-  } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [paciente, setPaciente] = useState("");
-  const [medicamento, setMedicamento] = useState("");
-  const [farmaceutico, setFarmaceutico] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataTermino, setDataTermino] = useState("");
-  const [posologia, setPosologia] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [form, setForm] = useState({
+    id_paciente: "",
+    id_medicamento: "",
+    data_inicio: "",
+    frequencia: "",
+    data_fim: "",
+    dosagem: "",
+    motivo: "",
+    instrucoes: "",
+  });
+
+  const [pacientes, setPacientes] = useState<any[]>([]);
+  const [medicamentos, setMedicamentos] = useState<any[]>([]);
+  const pacientesOptions = (pacientes || [])
+    .filter((p) => p)
+    .map((p) => ({
+      label: p.usuario?.nome || p.nome || p.numero_identificacao || "Sem ID",
+      value: p.id_paciente || "",
+    }));
+  const medicamentosOptions = (medicamentos || [])
+    .filter((m) => m)
+    .map((m) => ({
+      label: m.nome_medicamento || "Sem nome",
+      value: m.id_medicamento,
+    }));
+
+  const carregarDados = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const [tratamentoRes, pacientesRes, medicamentosRes] = await Promise.all([
+        api.get(`/tratamentos/${id}`),
+        api.get("/pacientes"),
+        api.get("/medicamentos"),
+      ]);
+
+      const tratamento =
+        tratamentoRes.data?.tratamento ||
+        tratamentoRes.data?.data ||
+        tratamentoRes.data;
+      setPacientes(
+        pacientesRes.data?.dados ||
+          pacientesRes.data?.pacientes ||
+          pacientesRes.data?.data ||
+          [],
+      );
+      setMedicamentos(
+        medicamentosRes.data?.medicamentos ||
+          medicamentosRes.data?.dados ||
+          medicamentosRes.data?.data ||
+          [],
+      );
+
+      if (!tratamento || typeof tratamento !== "object") {
+        Alert.alert("Erro", "Tratamento não encontrado ou dados inválidos");
+        router.back();
+        return;
+      }
+
+      setForm({
+        id_paciente: tratamento.id_paciente || "",
+        id_medicamento: tratamento.id_medicamento || "",
+        data_inicio: tratamento.data_inicio || "",
+        frequencia: tratamento.frequencia || "",
+        data_fim: tratamento.data_fim || "",
+        dosagem: tratamento.dosagem || "",
+        motivo: tratamento.motivo || "",
+        instrucoes: tratamento.instrucoes || "",
+      });
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar tratamento";
+      Alert.alert("Erro", mensagem);
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (id) {
-      const tratamento = tratamentos.find((t) => t.id === id);
-      if (tratamento) {
-        setPaciente(tratamento.paciente);
-        setMedicamento(tratamento.medicamento);
-        setFarmaceutico(tratamento.farmaceutico || "");
-        setDataInicio(tratamento.dataInicio || "");
-        setDataTermino(tratamento.dataTermino || "");
-        setPosologia(tratamento.posologia);
-        setObservacoes(tratamento.observacoes || "");
-      } else {
-        Alert.alert("Erro", "Tratamento não encontrado");
-        router.back();
-      }
-    }
+    carregarDados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleAtualizar = () => {
-    if (!paciente || !medicamento || !dataInicio) {
+  const handleAtualizar = async () => {
+    if (!form.id_paciente || !form.id_medicamento || !form.data_inicio) {
       Alert.alert(
         "Erro",
         "Preencha pelo menos Paciente, Medicamento e Data de Início",
@@ -150,23 +132,31 @@ export default function EditarTratamentoScreen() {
       return;
     }
 
-    // Format the display period from dataInicio and dataTermino
-    const periodo = dataTermino
-      ? `${dataInicio} - ${dataTermino}`
-      : `A partir de ${dataInicio}`;
+    if (!id || typeof id !== "string") return;
 
-    if (id && typeof id === "string") {
-      updateTratamento(id, {
-        paciente,
-        medicamento,
-        farmaceutico,
-        dataInicio,
-        dataTermino,
-        posologia,
-        periodo, // Keep updated periodo
-        observacoes,
+    try {
+      setLoading(true);
+      await api.put(`/tratamentos/${id}`, {
+        id_paciente: form.id_paciente,
+        id_medicamento: form.id_medicamento,
+        data_inicio: converterDataParaISO(form.data_inicio),
+        frequencia: form.frequencia || null,
+        data_fim: form.data_fim ? converterDataParaISO(form.data_fim) : null,
+        dosagem: form.dosagem || null,
+        motivo: form.motivo || null,
+        instrucoes: form.instrucoes || null,
       });
+      Alert.alert("Sucesso", "Tratamento atualizado com sucesso!");
       router.push("/tratamentos");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao atualizar tratamento";
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -188,7 +178,7 @@ export default function EditarTratamentoScreen() {
           <View>
             <Text style={styles.pageTitle}>Editar tratamento</Text>
             <Text style={styles.pageSubtitle}>
-              Preencha os dados do novo tratamento
+              Atualize as informações do tratamento
             </Text>
           </View>
         </View>
@@ -196,81 +186,89 @@ export default function EditarTratamentoScreen() {
         <View style={styles.formCard}>
           <Text style={styles.formSectionTitle}>Informações do tratamento</Text>
 
-          <SelectField
+          <Select
             label="Paciente"
             placeholder="Selecione o paciente"
-            value={paciente}
-            options={pacientes.map((p) => ({ label: p.nome, value: p.nome }))}
-            onSelect={setPaciente}
+            value={form.id_paciente}
+            options={pacientesOptions}
+            onSelect={(val) => setForm({ ...form, id_paciente: val })}
             required
           />
 
-          <SelectField
+          <Select
             label="Medicamento"
             placeholder="Selecione o medicamento"
-            value={medicamento}
-            options={medicamentos.map((m) => ({
-              label: m.nome,
-              value: m.nome,
-            }))}
-            onSelect={setMedicamento}
+            value={form.id_medicamento}
+            options={medicamentosOptions}
+            onSelect={(val) => setForm({ ...form, id_medicamento: val })}
             required
-          />
-
-          <SelectField
-            label="Farmacêutico responsável"
-            placeholder="Selecione o farmacêutico"
-            value={farmaceutico}
-            options={farmaceuticos.map((f) => ({
-              label: f.nome,
-              value: f.nome,
-            }))}
-            onSelect={setFarmaceutico}
           />
 
           <FormInput
             label="Data de início"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataInicio}
-            onChangeText={(v) => setDataInicio(formatarData(v))}
+            value={form.data_inicio}
+            onChangeText={(v) =>
+              setForm({ ...form, data_inicio: formatarData(v) })
+            }
+          />
+
+          <FormInput
+            label="Frequência"
+            placeholder="Ex: Uma vez ao dia"
+            value={form.frequencia}
+            onChangeText={(v) => setForm({ ...form, frequencia: v })}
           />
 
           <FormInput
             label="Data de término"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataTermino}
-            onChangeText={(v) => setDataTermino(formatarData(v))}
+            value={form.data_fim}
+            onChangeText={(v) =>
+              setForm({ ...form, data_fim: formatarData(v) })
+            }
           />
 
           <FormInput
-            label="Instruções de posologia"
-            placeholder="Ex: 1 comprimido a cada 8 horas"
-            value={posologia}
-            onChangeText={setPosologia}
+            label="Dosagem"
+            placeholder="Ex: 500mg"
+            value={form.dosagem}
+            onChangeText={(v) => setForm({ ...form, dosagem: v })}
           />
 
           <FormInput
-            label="Observações"
-            placeholder="Informações adicionais sobre o tratamento"
+            label="Motivo"
+            placeholder="Motivo do tratamento"
+            value={form.motivo}
+            onChangeText={(v) => setForm({ ...form, motivo: v })}
+          />
+
+          <FormInput
+            label="Instruções"
+            placeholder="Instruções especiais"
             multiline
             style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
-            value={observacoes}
-            onChangeText={setObservacoes}
+            value={form.instrucoes}
+            onChangeText={(v) => setForm({ ...form, instrucoes: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleAtualizar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Atualizar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Atualizando..." : "Atualizar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/tratamentos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -292,11 +290,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   formSectionTitle: {
     fontSize: 16,
@@ -311,6 +306,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,
@@ -321,54 +317,4 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   cancelButtonText: { color: Colors.text, fontSize: 16, fontWeight: "bold" },
-});
-
-const selectStyles = StyleSheet.create({
-  wrapper: { marginBottom: 16 },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-  },
-  triggerText: { fontSize: 14, color: Colors.text, flex: 1 },
-  placeholder: { color: Colors.textSecondary },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    maxHeight: 360,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginBottom: 12,
-  },
-  option: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  optionSelected: { backgroundColor: Colors.primary + "18" },
-  optionText: { fontSize: 14, color: Colors.text },
-  optionTextSelected: { color: Colors.primary, fontWeight: "600" },
-  emptyText: { textAlign: "center", color: Colors.textSecondary, padding: 16 },
 });

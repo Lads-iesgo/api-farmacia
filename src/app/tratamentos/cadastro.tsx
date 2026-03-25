@@ -1,11 +1,8 @@
 import { useRouter } from "expo-router";
-import { ArrowLeft, ChevronDown } from "lucide-react-native";
+import { ArrowLeft } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   Alert,
-  FlatList,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,132 +13,141 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import SelectField from "../_components/Select";
+import api from "../services/api";
 
 const formatarData = (valor: string) => {
   const numeros = valor.replace(/\D/g, "").slice(0, 8);
-  return numeros
-    .replace(/(\d{2})(\d)/, "$1/$2")
-    .replace(/(\d{2})(\d)/, "$1/$2");
+  if (numeros.length <= 2) return numeros;
+  if (numeros.length <= 4) return `${numeros.slice(0, 2)}/${numeros.slice(2)}`;
+  return `${numeros.slice(0, 2)}/${numeros.slice(2, 4)}/${numeros.slice(4)}`;
 };
 
-function SelectField({
-  label,
-  placeholder,
-  value,
-  options,
-  onSelect,
-  required,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onSelect: (val: string) => void;
-  required?: boolean;
-}) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <View style={selectStyles.wrapper}>
-      <Text style={selectStyles.label}>
-        {label}
-        {required ? " *" : ""}
-      </Text>
-      <TouchableOpacity
-        style={selectStyles.trigger}
-        onPress={() => setVisible(true)}
-        activeOpacity={0.7}
-      >
-        <Text
-          style={[selectStyles.triggerText, !value && selectStyles.placeholder]}
-        >
-          {value || placeholder}
-        </Text>
-        <ChevronDown size={18} color={Colors.textSecondary} />
-      </TouchableOpacity>
-      <Modal visible={visible} transparent animationType="fade">
-        <Pressable
-          style={selectStyles.overlay}
-          onPress={() => setVisible(false)}
-        >
-          <View style={selectStyles.modal}>
-            <Text style={selectStyles.modalTitle}>{label}</Text>
-            <FlatList
-              data={options}
-              keyExtractor={(item) => item.value}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[
-                    selectStyles.option,
-                    item.value === value && selectStyles.optionSelected,
-                  ]}
-                  onPress={() => {
-                    onSelect(item.value);
-                    setVisible(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      selectStyles.optionText,
-                      item.value === value && selectStyles.optionTextSelected,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text style={selectStyles.emptyText}>
-                  Nenhum item cadastrado
-                </Text>
-              }
-            />
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  );
-}
+const converterDataParaISO = (data: string) => {
+  if (!data || data.length < 10) return null;
+  const [dia, mes, ano] = data.split("/");
+  return `${ano}-${mes}-${dia}`;
+};
 
 export default function CadastroTratamentoScreen() {
   const router = useRouter();
-  const { addTratamento, pacientes, medicamentos, farmaceuticos } = useApp();
+  const [pacientes, setPacientes] = useState<any[]>([]);
+  const [medicamentos, setMedicamentos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const [paciente, setPaciente] = useState("");
-  const [medicamento, setMedicamento] = useState("");
-  const [farmaceutico, setFarmaceutico] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataTermino, setDataTermino] = useState("");
-  const [posologia, setPosologia] = useState("");
-  const [observacoes, setObservacoes] = useState("");
+  const [form, setForm] = useState({
+    idPaciente: "",
+    idMedicamento: "",
+    dataInicio: "",
+    frequencia: "",
+    dataFim: "",
+    dosagem: "",
+    motivo: "",
+    instrucoes: "",
+  });
 
-  const handleCadastrar = () => {
-    if (!paciente || !medicamento || !dataInicio) {
+  React.useEffect(() => {
+    const carregarDados = async () => {
+      try {
+        const [pacResponse, medResponse] = await Promise.all([
+          api.get("/pacientes", { params: { skip: 0, take: 100 } }),
+          api.get("/medicamentos", { params: { skip: 0, take: 100 } }),
+        ]);
+        setPacientes(
+          pacResponse.data.dados ||
+            pacResponse.data.pacientes ||
+            (Array.isArray(pacResponse.data) ? pacResponse.data : []),
+        );
+        setMedicamentos(
+          medResponse.data.medicamentos ||
+            medResponse.data.dados ||
+            (Array.isArray(medResponse.data) ? medResponse.data : []),
+        );
+      } catch {
+        Alert.alert("Erro", "Falha ao carregar dados");
+      }
+    };
+    carregarDados();
+  }, []);
+
+  const handleCadastrar = async () => {
+    if (
+      !form.idPaciente ||
+      !form.idMedicamento ||
+      !form.dataInicio ||
+      !form.frequencia
+    ) {
       Alert.alert(
         "Erro",
-        "Preencha pelo menos Paciente, Medicamento e Data de Início",
+        "Preencha campos obrigatórios: Paciente, Medicamento, Data e Frequência",
       );
       return;
     }
 
-    // Format the display period from dataInicio and dataTermino
-    const periodo = dataTermino
-      ? `${dataInicio} - ${dataTermino}`
-      : `A partir de ${dataInicio}`;
+    setLoading(true);
+    try {
+      // Extrair id do usuário logado do token
+      const AsyncStorage = (
+        await import("@react-native-async-storage/async-storage")
+      ).default;
+      const token = await AsyncStorage.getItem("authToken");
+      let idUsuarioCriador = null;
+      if (token) {
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const decoded = JSON.parse(atob(parts[1]));
+            idUsuarioCriador =
+              decoded?.id_usuario || decoded?.id || decoded?.sub;
+          }
+        } catch {}
+      }
 
-    addTratamento({
-      paciente,
-      medicamento,
-      farmaceutico,
-      dataInicio,
-      dataTermino,
-      posologia,
-      periodo,
-      observacoes,
-    });
+      if (!idUsuarioCriador) {
+        Alert.alert("Erro", "Usuário não identificado. Faça login novamente.");
+        setLoading(false);
+        return;
+      }
 
-    router.push("/tratamentos");
+      await api.post("/tratamentos", {
+        id_paciente: Number(form.idPaciente),
+        id_medicamento: Number(form.idMedicamento),
+        id_usuario_criador: Number(idUsuarioCriador),
+        data_inicio: converterDataParaISO(form.dataInicio),
+        frequencia: form.frequencia,
+        data_fim: converterDataParaISO(form.dataFim) || null,
+        dosagem_prescrita: form.dosagem || null,
+        motivo_tratamento: form.motivo || null,
+        instrucoes_especiais: form.instrucoes || null,
+      });
+
+      Alert.alert("Sucesso", "Tratamento cadastrado");
+      router.push("/tratamentos");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao cadastrar tratamento";
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const pacientesOptions = (pacientes || [])
+    .filter((p) => p)
+    .map((p) => ({
+      label: p.usuario?.nome || p.nome || p.numero_identificacao || "Sem ID",
+      value: p.id_paciente || "",
+    }));
+
+  const medicamentosOptions = (medicamentos || [])
+    .filter((m) => m)
+    .map((m) => ({
+      label: m.nome_medicamento || "Sem nome",
+      value: m.id_medicamento || "",
+    }));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -172,78 +178,86 @@ export default function CadastroTratamentoScreen() {
           <SelectField
             label="Paciente"
             placeholder="Selecione o paciente"
-            value={paciente}
-            options={pacientes.map((p) => ({ label: p.nome, value: p.nome }))}
-            onSelect={setPaciente}
+            value={form.idPaciente}
+            options={pacientesOptions}
+            onSelect={(val) => setForm({ ...form, idPaciente: val })}
             required
           />
 
           <SelectField
             label="Medicamento"
             placeholder="Selecione o medicamento"
-            value={medicamento}
-            options={medicamentos.map((m) => ({
-              label: m.nome,
-              value: m.nome,
-            }))}
-            onSelect={setMedicamento}
+            value={form.idMedicamento}
+            options={medicamentosOptions}
+            onSelect={(val) => setForm({ ...form, idMedicamento: val })}
             required
           />
 
-          <SelectField
-            label="Farmacêutico responsável"
-            placeholder="Selecione o farmacêutico"
-            value={farmaceutico}
-            options={farmaceuticos.map((f) => ({
-              label: f.nome,
-              value: f.nome,
-            }))}
-            onSelect={setFarmaceutico}
-          />
-
           <FormInput
-            label="Data de início"
+            label="Data de Início *"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataInicio}
-            onChangeText={(v) => setDataInicio(formatarData(v))}
+            maxLength={10}
+            value={form.dataInicio}
+            onChangeText={(v) =>
+              setForm({ ...form, dataInicio: formatarData(v) })
+            }
           />
 
           <FormInput
-            label="Data de término"
+            label="Frequência *"
+            placeholder="Ex: 1x ao dia, 2x ao dia"
+            value={form.frequencia}
+            onChangeText={(v) => setForm({ ...form, frequencia: v })}
+          />
+
+          <FormInput
+            label="Data de Término"
             placeholder="dd/mm/aaaa"
             keyboardType="numeric"
-            value={dataTermino}
-            onChangeText={(v) => setDataTermino(formatarData(v))}
+            maxLength={10}
+            value={form.dataFim}
+            onChangeText={(v) => setForm({ ...form, dataFim: formatarData(v) })}
           />
 
           <FormInput
-            label="Instruções de posologia"
-            placeholder="Ex: 1 comprimido a cada 8 horas"
-            value={posologia}
-            onChangeText={setPosologia}
+            label="Dosagem Prescrita"
+            placeholder="Ex: 500mg, 1 comprimido"
+            value={form.dosagem}
+            onChangeText={(v) => setForm({ ...form, dosagem: v })}
           />
 
           <FormInput
-            label="Observações"
-            placeholder="Informações adicionais sobre o tratamento"
+            label="Motivo do Tratamento"
+            placeholder="Razão do tratamento"
+            value={form.motivo}
+            onChangeText={(v) => setForm({ ...form, motivo: v })}
+          />
+
+          <FormInput
+            label="Instruções Especiais"
+            placeholder="Ex: Tomar com alimento"
             multiline
             style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
-            value={observacoes}
-            onChangeText={setObservacoes}
+            value={form.instrucoes}
+            onChangeText={(v) => setForm({ ...form, instrucoes: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleCadastrar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Adicionar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Cadastrando..." : "Adicionar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/tratamentos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -281,6 +295,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,
@@ -291,54 +306,4 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   cancelButtonText: { color: Colors.text, fontSize: 16, fontWeight: "bold" },
-});
-
-const selectStyles = StyleSheet.create({
-  wrapper: { marginBottom: 16 },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.text,
-    marginBottom: 6,
-  },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: Colors.white,
-  },
-  triggerText: { fontSize: 14, color: Colors.text, flex: 1 },
-  placeholder: { color: Colors.textSecondary },
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 16,
-    maxHeight: 360,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: Colors.text,
-    marginBottom: 12,
-  },
-  option: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  optionSelected: { backgroundColor: Colors.primary + "18" },
-  optionText: { fontSize: 14, color: Colors.text },
-  optionTextSelected: { color: Colors.primary, fontWeight: "600" },
-  emptyText: { textAlign: "center", color: Colors.textSecondary, padding: 16 },
 });

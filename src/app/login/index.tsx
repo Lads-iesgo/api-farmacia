@@ -1,6 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Lock, Mail } from "lucide-react-native";
+import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,20 +17,70 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import { useNotification } from "../_components/NotificationContext";
+import api from "../services/api";
 
-export default function LoginScreen() {
+export default function LoginScreen(): React.ReactNode {
   const router = useRouter();
   const { showNotification } = useNotification();
 
-  const handleEntrar = () => {
-    showNotification("success", "Usuario logado com sucesso");
-    // Navega para o dashboard dentro do grupo do drawer
-    router.replace("/home" as any);
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const fazerlogin = async () => {
+    const emailLimpo = email.trim();
+    const senhaLimpa = senha.trim();
+
+    if (!emailLimpo || !senhaLimpa) {
+      Alert.alert("Erro", "Email e senha são obrigatórios");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await api.post("/auth/login", {
+        email: emailLimpo,
+        senha: senhaLimpa,
+      });
+
+      const token =
+        response.data?.token ||
+        response.data?.accessToken ||
+        response.data?.data?.token;
+
+      if (token) {
+        await AsyncStorage.setItem("authToken", token);
+      } else {
+        Alert.alert(
+          "Erro",
+          "Token não recebido do servidor. Resposta: " +
+            JSON.stringify(response.data),
+        );
+        setLoading(false);
+        return;
+      }
+
+      showNotification("success", "Login realizado com sucesso!");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      router.replace("/home" as any);
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        "Erro ao fazer login. Verifique suas credenciais.";
+      console.error("❌ Erro no login:", error);
+      Alert.alert("Erro de Login", mensagem);
+    } finally {
+      setLoading(false);
+    }
   };
+
   const handleForgotPassword = () => {
+    // Navega para a tela de recuperação de senha
     router.replace("/recuperar-senha" as any);
   };
   const handleRegister = () => {
+    // Navega para a tela de cadastro
     router.replace("/cadastro" as any);
   };
 
@@ -59,10 +113,12 @@ export default function LoginScreen() {
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
                 placeholder="E-mail"
                 placeholderTextColor={Colors.textSecondary}
                 autoCapitalize="none"
+                keyboardType="email-address"
               />
             </View>
           </View>
@@ -75,7 +131,8 @@ export default function LoginScreen() {
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                value={senha}
+                onChangeText={setSenha}
                 placeholder="Senha"
                 placeholderTextColor={Colors.textSecondary}
                 secureTextEntry
@@ -92,8 +149,16 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleEntrar}>
-            <Text style={styles.loginButtonText}>ENTRAR</Text>
+          <TouchableOpacity
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+            onPress={fazerlogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>ENTRAR</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.registerContainer}>
@@ -209,6 +274,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+  },
+  loginButtonDisabled: {
+    opacity: 0.6,
   },
   loginButtonText: {
     color: Colors.white,

@@ -8,11 +8,13 @@ import React, {
 } from "react";
 import { TextInputProps } from "react-native";
 import { useNotification } from "../_components/NotificationContext";
+import api from "../services/api";
 
 const TRATAMENTOS_STORAGE_KEY = "@app-farmacia:tratamentos";
-const FARMACEUTICOS_STORAGE_KEY = "@app-farmacia:farmaceuticos";
+const ADESOES_STORAGE_KEY = "@app-farmacia:adesoes";
 const MEDICAMENTOS_STORAGE_KEY = "@app-farmacia:medicamentos";
 const PACIENTES_STORAGE_KEY = "@app-farmacia:pacientes";
+const USER_ID_STORAGE_KEY = "@app-farmacia:userId";
 
 export interface HeaderProps {
   title?: string;
@@ -50,62 +52,80 @@ export interface HeaderProps {
   logoImage?: string;
 }
 
-export interface Farmaceutico {
-  id: string;
-  nome: string;
-  especialidade: string;
-  telefone: string;
-  email: string;
+export interface Adesao {
+  id_adesao?: string;
+  id_tratamento: string;
+  id_paciente: string;
+  data_prevista: string;
+  data_tomada?: string;
+  status?: string;
+  observacoes?: string;
 }
 
 export interface Medicamento {
-  id: string;
-  nome: string;
-  tipo: string;
-  quantidade: string;
+  id_medicamento?: string;
+  nome_medicamento: string;
+  principio_ativo: string;
   dosagem: string;
+  apresentacao: string;
+  fabricante: string;
+  lote: string;
+  data_validade: string;
   descricao: string;
+  efeitos_colaterais: string;
+  ativo?: boolean;
 }
 
 export interface Paciente {
-  id: string;
-  nome: string;
-  cpf: string;
-  dataNascimento: string;
-  telefone: string;
-  email: string;
-  endereco: string;
+  id_paciente?: string;
+  id_usuario?: string;
+  numero_identificacao: string;
+  data_nascimento?: string;
+  genero?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  historico_medico?: string;
+  alergias?: string;
 }
 
 export interface Tratamento {
-  id: string;
-  paciente: string;
-  medicamento: string;
-  farmaceutico: string;
-  dataInicio: string;
-  dataTermino: string;
-  posologia: string;
-  periodo: string;
-  observacoes: string;
+  id_tratamento?: string;
+  id_paciente: string;
+  id_medicamento: string;
+  id_usuario_criador?: string;
+  data_inicio: string;
+  frequencia: string;
+  data_fim?: string;
+  dosagem_prescrita?: string;
+  motivo_tratamento?: string;
+  instrucoes_especiais?: string;
 }
 
 type AppContextType = {
-  farmaceuticos: Farmaceutico[];
-  addFarmaceutico: (item: Omit<Farmaceutico, "id">) => void;
-  updateFarmaceutico: (id: string, item: Omit<Farmaceutico, "id">) => void;
-  deleteFarmaceutico: (id: string) => void;
+  userId: string | null;
+  setUserId: (id: string) => void;
   medicamentos: Medicamento[];
-  addMedicamento: (item: Omit<Medicamento, "id">) => void;
-  updateMedicamento: (id: string, item: Omit<Medicamento, "id">) => void;
-  deleteMedicamento: (id: string) => void;
+  addMedicamento: (item: Medicamento) => Promise<void>;
+  updateMedicamento: (id: string, item: Medicamento) => Promise<void>;
+  deleteMedicamento: (id: string) => Promise<void>;
+  loadMedicamentos: () => Promise<void>;
   pacientes: Paciente[];
-  addPaciente: (item: Omit<Paciente, "id">) => void;
-  updatePaciente: (id: string, item: Omit<Paciente, "id">) => void;
-  deletePaciente: (id: string) => void;
+  addPaciente: (item: Paciente) => Promise<void>;
+  updatePaciente: (id: string, item: Paciente) => Promise<void>;
+  deletePaciente: (id: string) => Promise<void>;
+  loadPacientes: () => Promise<void>;
   tratamentos: Tratamento[];
-  addTratamento: (item: Omit<Tratamento, "id">) => void;
-  updateTratamento: (id: string, item: Omit<Tratamento, "id">) => void;
-  deleteTratamento: (id: string) => void;
+  addTratamento: (item: Tratamento) => Promise<void>;
+  updateTratamento: (id: string, item: Tratamento) => Promise<void>;
+  deleteTratamento: (id: string) => Promise<void>;
+  loadTratamentos: () => Promise<void>;
+  adesoes: Adesao[];
+  addAdesao: (item: Adesao) => Promise<void>;
+  updateAdesao: (id: string, item: Adesao) => Promise<void>;
+  deleteAdesao: (id: string) => Promise<void>;
+  loadAdesoes: () => Promise<void>;
 };
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -113,262 +133,290 @@ export const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { showNotification } = useNotification();
 
-  const [farmaceuticos, setFarmaceuticos] = useState<Farmaceutico[]>([]);
+  const [userId, setUserIdState] = useState<string | null>(null);
   const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [tratamentos, setTratamentos] = useState<Tratamento[]>([]);
-  const [isFarmaceuticosLoaded, setIsFarmaceuticosLoaded] = useState(false);
-  const [isMedicamentosLoaded, setIsMedicamentosLoaded] = useState(false);
-  const [isPacientesLoaded, setIsPacientesLoaded] = useState(false);
-  const [isTratamentosLoaded, setIsTratamentosLoaded] = useState(false);
+  const [adesoes, setAdesoes] = useState<Adesao[]>([]);
 
+  // Load userId from storage on mount
   useEffect(() => {
-    const carregarFarmaceuticos = async () => {
+    const loadUserId = async () => {
       try {
-        const farmaceuticosSalvos = await AsyncStorage.getItem(
-          FARMACEUTICOS_STORAGE_KEY,
-        );
-
-        if (farmaceuticosSalvos) {
-          const parsed = JSON.parse(farmaceuticosSalvos);
-          if (Array.isArray(parsed)) {
-            setFarmaceuticos(parsed);
-          }
+        const stored = await AsyncStorage.getItem(USER_ID_STORAGE_KEY);
+        if (stored) {
+          setUserIdState(stored);
         }
       } catch (error) {
-        console.error("Erro ao carregar farmacêuticos", error);
-      } finally {
-        setIsFarmaceuticosLoaded(true);
+        console.error("Erro ao carregar userId:", error);
       }
     };
-
-    carregarFarmaceuticos();
+    loadUserId();
   }, []);
 
+  const setUserId = async (id: string) => {
+    setUserIdState(id);
+    await AsyncStorage.setItem(USER_ID_STORAGE_KEY, id);
+  };
+
+  // Carregar todos os dados ao montar
   useEffect(() => {
-    if (!isFarmaceuticosLoaded) return;
-
-    const salvarFarmaceuticos = async () => {
-      try {
-        await AsyncStorage.setItem(
-          FARMACEUTICOS_STORAGE_KEY,
-          JSON.stringify(farmaceuticos),
-        );
-      } catch (error) {
-        console.error("Erro ao salvar farmacêuticos", error);
-      }
-    };
-
-    salvarFarmaceuticos();
-  }, [farmaceuticos, isFarmaceuticosLoaded]);
-
-  useEffect(() => {
-    const carregarMedicamentos = async () => {
-      try {
-        const medicamentosSalvos = await AsyncStorage.getItem(
-          MEDICAMENTOS_STORAGE_KEY,
-        );
-
-        if (medicamentosSalvos) {
-          const parsed = JSON.parse(medicamentosSalvos);
-          if (Array.isArray(parsed)) {
-            setMedicamentos(parsed);
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar medicamentos", error);
-      } finally {
-        setIsMedicamentosLoaded(true);
-      }
-    };
-
-    carregarMedicamentos();
+    loadMedicamentos();
+    loadPacientes();
+    loadTratamentos();
+    loadAdesoes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!isMedicamentosLoaded) return;
-
-    const salvarMedicamentos = async () => {
-      try {
-        await AsyncStorage.setItem(
-          MEDICAMENTOS_STORAGE_KEY,
-          JSON.stringify(medicamentos),
-        );
-      } catch (error) {
-        console.error("Erro ao salvar medicamentos", error);
-      }
-    };
-
-    salvarMedicamentos();
-  }, [medicamentos, isMedicamentosLoaded]);
-
-  useEffect(() => {
-    const carregarPacientes = async () => {
-      try {
-        const pacientesSalvos = await AsyncStorage.getItem(
-          PACIENTES_STORAGE_KEY,
-        );
-
-        if (pacientesSalvos) {
-          const parsed = JSON.parse(pacientesSalvos);
-          if (Array.isArray(parsed)) {
-            setPacientes(parsed);
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar pacientes", error);
-      } finally {
-        setIsPacientesLoaded(true);
-      }
-    };
-
-    carregarPacientes();
-  }, []);
-
-  useEffect(() => {
-    if (!isPacientesLoaded) return;
-
-    const salvarPacientes = async () => {
-      try {
-        await AsyncStorage.setItem(
-          PACIENTES_STORAGE_KEY,
-          JSON.stringify(pacientes),
-        );
-      } catch (error) {
-        console.error("Erro ao salvar pacientes", error);
-      }
-    };
-
-    salvarPacientes();
-  }, [pacientes, isPacientesLoaded]);
-
-  useEffect(() => {
-    const carregarTratamentos = async () => {
-      try {
-        const tratamentosSalvos = await AsyncStorage.getItem(
-          TRATAMENTOS_STORAGE_KEY,
-        );
-
-        if (tratamentosSalvos) {
-          const parsed = JSON.parse(tratamentosSalvos);
-          if (Array.isArray(parsed)) {
-            setTratamentos(parsed);
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar tratamentos", error);
-      } finally {
-        setIsTratamentosLoaded(true);
-      }
-    };
-
-    carregarTratamentos();
-  }, []);
-
-  useEffect(() => {
-    if (!isTratamentosLoaded) return;
-
-    const salvarTratamentos = async () => {
-      try {
-        await AsyncStorage.setItem(
-          TRATAMENTOS_STORAGE_KEY,
-          JSON.stringify(tratamentos),
-        );
-      } catch (error) {
-        console.error("Erro ao salvar tratamentos", error);
-      }
-    };
-
-    salvarTratamentos();
-  }, [tratamentos, isTratamentosLoaded]);
-
-  const generateId = () => Math.random().toString(36).substr(2, 9);
-
-  const addFarmaceutico = (item: Omit<Farmaceutico, "id">) => {
-    setFarmaceuticos((prev) => [...prev, { ...item, id: generateId() }]);
-    showNotification("success", "Farmacêutico cadastrado com sucesso");
+  // Load medicamentos from API
+  const loadMedicamentos = async () => {
+    try {
+      const response = await api.get("/medicamentos");
+      const dados = response.data?.medicamentos || response.data?.dados || [];
+      setMedicamentos(dados);
+    } catch (error) {
+      console.error("Erro ao carregar medicamentos:", error);
+    }
   };
 
-  const updateFarmaceutico = (id: string, item: Omit<Farmaceutico, "id">) => {
-    setFarmaceuticos((prev) =>
-      prev.map((f) => (f.id === id ? { ...item, id } : f)),
-    );
-    showNotification("success", "Farmacêutico editado com sucesso");
+  // Load pacientes from API
+  const loadPacientes = async () => {
+    try {
+      const response = await api.get("/pacientes");
+      const dados = response.data?.dados || response.data?.pacientes || [];
+      setPacientes(dados);
+    } catch (error) {
+      console.error("Erro ao carregar pacientes:", error);
+    }
   };
 
-  const deleteFarmaceutico = (id: string) => {
-    setFarmaceuticos((prev) => prev.filter((f) => f.id !== id));
-    showNotification("success", "Farmacêutico excluído com sucesso");
+  // Load tratamentos from API
+  const loadTratamentos = async () => {
+    try {
+      const response = await api.get("/tratamentos");
+      const dados = response.data?.tratamentos || response.data?.dados || [];
+      setTratamentos(dados);
+    } catch (error) {
+      console.error("Erro ao carregar tratamentos:", error);
+    }
   };
 
-  const addMedicamento = (item: Omit<Medicamento, "id">) => {
-    setMedicamentos((prev) => [...prev, { ...item, id: generateId() }]);
-    showNotification("success", "Medicamento cadastrado com sucesso");
+  // Load adesoes from API
+  const loadAdesoes = async () => {
+    try {
+      const response = await api.get("/adesoes");
+      const dados = response.data?.adesoes || response.data?.dados || [];
+      setAdesoes(dados);
+    } catch (error) {
+      console.error("Erro ao carregar adesões:", error);
+    }
   };
 
-  const updateMedicamento = (id: string, item: Omit<Medicamento, "id">) => {
-    setMedicamentos((prev) =>
-      prev.map((m) => (m.id === id ? { ...item, id } : m)),
-    );
-    showNotification("success", "Medicamento editado com sucesso");
+  // Medicamentos CRUD
+  const addMedicamento = async (item: Medicamento) => {
+    try {
+      const response = await api.post("/medicamentos", item);
+      setMedicamentos((prev) => [...prev, response.data]);
+      showNotification("success", "Medicamento cadastrado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao cadastrar medicamento");
+      throw error;
+    }
   };
 
-  const deleteMedicamento = (id: string) => {
-    setMedicamentos((prev) => prev.filter((m) => m.id !== id));
-    showNotification("success", "Medicamento excluído com sucesso");
+  const updateMedicamento = async (id: string, item: Medicamento) => {
+    try {
+      await api.put(`/medicamentos/${id}`, item);
+      setMedicamentos((prev) =>
+        prev.map((m) =>
+          m.id_medicamento === id || m.id_medicamento === id.split("_")[0]
+            ? item
+            : m,
+        ),
+      );
+      showNotification("success", "Medicamento atualizado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao atualizar medicamento");
+      throw error;
+    }
   };
 
-  const addPaciente = (item: Omit<Paciente, "id">) => {
-    setPacientes((prev) => [...prev, { ...item, id: generateId() }]);
-    showNotification("success", "Paciente cadastrado com sucesso");
+  const deleteMedicamento = async (id: string) => {
+    try {
+      await api.delete(`/medicamentos/${id}`);
+      setMedicamentos((prev) =>
+        prev.filter(
+          (m) =>
+            m.id_medicamento !== id && m.id_medicamento !== id.split("_")[0],
+        ),
+      );
+      showNotification("success", "Medicamento excluído com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao excluir medicamento");
+      throw error;
+    }
   };
 
-  const updatePaciente = (id: string, item: Omit<Paciente, "id">) => {
-    setPacientes((prev) =>
-      prev.map((p) => (p.id === id ? { ...item, id } : p)),
-    );
-    showNotification("success", "Paciente editado com sucesso");
+  // Pacientes CRUD
+  const addPaciente = async (item: Paciente) => {
+    try {
+      if (!userId) throw new Error("Usuário não identificado");
+      const payload = { ...item, id_usuario: userId };
+      const response = await api.post("/pacientes", payload);
+      setPacientes((prev) => [...prev, response.data]);
+      showNotification("success", "Paciente cadastrado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao cadastrar paciente");
+      throw error;
+    }
   };
 
-  const deletePaciente = (id: string) => {
-    setPacientes((prev) => prev.filter((p) => p.id !== id));
-    showNotification("success", "Paciente excluído com sucesso");
+  const updatePaciente = async (id: string, item: Paciente) => {
+    try {
+      if (!userId) throw new Error("Usuário não identificado");
+      const payload = { ...item, id_usuario: userId };
+      await api.put(`/pacientes/${id}`, payload);
+      setPacientes((prev) =>
+        prev.map((p) =>
+          p.id_paciente === id || p.id_paciente === id.split("_")[0] ? item : p,
+        ),
+      );
+      showNotification("success", "Paciente atualizado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao atualizar paciente");
+      throw error;
+    }
   };
 
-  const addTratamento = (item: Omit<Tratamento, "id">) => {
-    setTratamentos((prev) => [...prev, { ...item, id: generateId() }]);
-    showNotification("success", "Tratamento cadastrado com sucesso");
+  const deletePaciente = async (id: string) => {
+    try {
+      await api.delete(`/pacientes/${id}`);
+      setPacientes((prev) =>
+        prev.filter(
+          (p) => p.id_paciente !== id && p.id_paciente !== id.split("_")[0],
+        ),
+      );
+      showNotification("success", "Paciente excluído com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao excluir paciente");
+      throw error;
+    }
   };
 
-  const updateTratamento = (id: string, item: Omit<Tratamento, "id">) => {
-    setTratamentos((prev) =>
-      prev.map((t) => (t.id === id ? { ...item, id } : t)),
-    );
-    showNotification("success", "Tratamento editado com sucesso");
+  // Tratamentos CRUD
+  const addTratamento = async (item: Tratamento) => {
+    try {
+      if (!userId) throw new Error("Usuário não identificado");
+      const payload = { ...item, id_usuario_criador: userId };
+      const response = await api.post("/tratamentos", payload);
+      setTratamentos((prev) => [...prev, response.data]);
+      showNotification("success", "Tratamento cadastrado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao cadastrar tratamento");
+      throw error;
+    }
   };
 
-  const deleteTratamento = (id: string) => {
-    setTratamentos((prev) => prev.filter((t) => t.id !== id));
-    showNotification("success", "Tratamento excluído com sucesso");
+  const updateTratamento = async (id: string, item: Tratamento) => {
+    try {
+      if (!userId) throw new Error("Usuário não identificado");
+      const payload = { ...item, id_usuario_criador: userId };
+      await api.put(`/tratamentos/${id}`, payload);
+      setTratamentos((prev) =>
+        prev.map((t) =>
+          t.id_tratamento === id || t.id_tratamento === id.split("_")[0]
+            ? item
+            : t,
+        ),
+      );
+      showNotification("success", "Tratamento atualizado com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao atualizar tratamento");
+      throw error;
+    }
+  };
+
+  const deleteTratamento = async (id: string) => {
+    try {
+      await api.delete(`/tratamentos/${id}`);
+      setTratamentos((prev) =>
+        prev.filter(
+          (t) => t.id_tratamento !== id && t.id_tratamento !== id.split("_")[0],
+        ),
+      );
+      showNotification("success", "Tratamento excluído com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao excluir tratamento");
+      throw error;
+    }
+  };
+
+  // Adesoes CRUD
+  const addAdesao = async (item: Adesao) => {
+    try {
+      if (!userId) throw new Error("Usuário não identificado");
+      const response = await api.post("/adesoes", item);
+      setAdesoes((prev) => [...prev, response.data]);
+      showNotification("success", "Adesão registrada com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao registrar adesão");
+      throw error;
+    }
+  };
+
+  const updateAdesao = async (id: string, item: Adesao) => {
+    try {
+      await api.put(`/adesoes/${id}`, item);
+      setAdesoes((prev) =>
+        prev.map((a) =>
+          a.id_adesao === id || a.id_adesao === id.split("_")[0] ? item : a,
+        ),
+      );
+      showNotification("success", "Adesão atualizada com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao atualizar adesão");
+      throw error;
+    }
+  };
+
+  const deleteAdesao = async (id: string) => {
+    try {
+      await api.delete(`/adesoes/${id}`);
+      setAdesoes((prev) =>
+        prev.filter(
+          (a) => a.id_adesao !== id && a.id_adesao !== id.split("_")[0],
+        ),
+      );
+      showNotification("success", "Adesão excluída com sucesso");
+    } catch (error) {
+      showNotification("error", "Erro ao excluir adesão");
+      throw error;
+    }
   };
 
   const value: AppContextType = {
-    farmaceuticos,
-    addFarmaceutico,
-    updateFarmaceutico,
-    deleteFarmaceutico,
+    userId,
+    setUserId,
     medicamentos,
     addMedicamento,
     updateMedicamento,
     deleteMedicamento,
+    loadMedicamentos,
     pacientes,
     addPaciente,
     updatePaciente,
     deletePaciente,
+    loadPacientes,
     tratamentos,
     addTratamento,
     updateTratamento,
     deleteTratamento,
+    loadTratamentos,
+    adesoes,
+    addAdesao,
+    updateAdesao,
+    deleteAdesao,
+    loadAdesoes,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

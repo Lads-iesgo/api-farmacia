@@ -13,51 +13,67 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 export default function EditarMedicamentoScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { medicamentos, updateMedicamento } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [fabricante, setFabricante] = useState("");
-  const [dosagem, setDosagem] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [quantidade, setQuantidade] = useState("");
-  const [descricao, setDescricao] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    dosagem: "",
+    apresentacao: "",
+    descricao: "",
+  });
 
   useEffect(() => {
     if (id) {
-      const medicamento = medicamentos.find((m) => m.id === id);
-      if (medicamento) {
-        setNome(medicamento.nome);
-        setDosagem(medicamento.dosagem || "");
-        setTipo(medicamento.tipo);
-        setQuantidade(medicamento.quantidade);
-        setDescricao(medicamento.descricao || "");
-      } else {
-        Alert.alert("Erro", "Medicamento não encontrado");
-        router.back();
-      }
+      carregarMedicamento();
     }
-  }, [id, medicamentos]);
+  }, [id]);
 
-  const handleAtualizar = () => {
-    if (!nome || !fabricante || !quantidade) {
-      Alert.alert("Erro", "Preencha pelo menos Nome, Fabricante e Quantidade");
+  const carregarMedicamento = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/medicamentos/${id}`);
+      const med = response.data.medicamento || response.data;
+      setForm({
+        nome: med.nome_medicamento || "",
+        dosagem: med.dosagem || "",
+        apresentacao: med.apresentacao || "",
+        descricao: med.descricao || "",
+      });
+    } catch {
+      Alert.alert("Erro", "Medicamento não encontrado");
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAtualizar = async () => {
+    if (!form.nome || !form.dosagem || !form.apresentacao) {
+      Alert.alert("Erro", "Preencha nome, dosagem e apresentação");
       return;
     }
 
-    if (id && typeof id === "string") {
-      updateMedicamento(id, {
-        nome,
-        dosagem,
-        tipo,
-        quantidade,
-        descricao,
+    setLoading(true);
+    try {
+      await api.put(`/medicamentos/${id}`, {
+        nome_medicamento: form.nome,
+        dosagem: form.dosagem,
+        apresentacao: form.apresentacao,
+        descricao: form.descricao || null,
       });
+      Alert.alert("Sucesso", "Medicamento atualizado");
       router.push("/medicamentos");
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro || error.message || "Falha ao atualizar";
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,61 +106,50 @@ export default function EditarMedicamentoScreen() {
           </Text>
 
           <FormInput
-            label="Nome do medicamento"
+            label="Nome do medicamento *"
             placeholder="Ex: Paracetamol 500mg"
-            value={nome}
-            onChangeText={setNome}
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
-            label="Fabricante"
-            placeholder="Ex: EMS"
-            value={fabricante}
-            onChangeText={setFabricante}
-          />
-
-          <FormInput
-            label="Dosagem"
+            label="Dosagem *"
             placeholder="Ex: 500mg"
-            value={dosagem}
-            onChangeText={setDosagem}
+            value={form.dosagem}
+            onChangeText={(v) => setForm({ ...form, dosagem: v })}
           />
 
           <FormInput
-            label="Tipo"
-            placeholder="Selecione o tipo"
-            value={tipo}
-            onChangeText={setTipo}
-          />
-
-          <FormInput
-            label="Quantidade em estoque"
-            placeholder="0"
-            keyboardType="numeric"
-            value={quantidade}
-            onChangeText={setQuantidade}
+            label="Apresentação *"
+            placeholder="Ex: Comprimido, Cápsula, Xarope"
+            value={form.apresentacao}
+            onChangeText={(v) => setForm({ ...form, apresentacao: v })}
           />
 
           <FormInput
             label="Descrição"
-            placeholder="Descreva o medicamento e suas indicações"
+            placeholder="Descreva o medicamento"
             multiline
             style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
-            value={descricao}
-            onChangeText={setDescricao}
+            value={form.descricao}
+            onChangeText={(v) => setForm({ ...form, descricao: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleAtualizar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Atualizar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Atualizando..." : "Atualizar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/medicamentos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -166,11 +171,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 2,
+    borderColor: Colors.primary,
   },
   formSectionTitle: {
     fontSize: 16,
@@ -185,6 +187,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,

@@ -11,8 +11,29 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import api from "../services/api";
+
+async function esquecisenha(email: string) {
+  if (!email.trim()) {
+    alert("Por favor, digite seu e-mail");
+    return;
+  }
+
+  try {
+    const response = await api.post("/auth/recuperar-senha", { email });
+    alert("E-mail de recuperação enviado com sucesso!");
+  } catch (error: any) {
+    console.error("Erro ao solicitar recuperação:", error);
+    const mensagem =
+      error.response?.data?.error ||
+      "Erro ao solicitar recuperação. Tente novamente.";
+    alert(mensagem);
+  }
+}
 
 export default function EsqueciSenha() {
+  const [email, setEmail] = React.useState("");
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -45,10 +66,15 @@ export default function EsqueciSenha() {
             keyboardType="email-address"
             placeholderTextColor="#999"
             autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
           />
 
           {/* Botão Enviar */}
-          <TouchableOpacity style={styles.botao}>
+          <TouchableOpacity
+            style={styles.botao}
+            onPress={() => esquecisenha(email)}
+          >
             <Text style={styles.botaoTexto}>Enviar link de redefinição</Text>
           </TouchableOpacity>
 

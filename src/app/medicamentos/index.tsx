@@ -1,7 +1,8 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Plus, Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -14,14 +15,45 @@ import { Colors } from "../_components/Colors";
 import Header from "../_components/Header";
 import ItemLista from "../_components/ItemLista";
 import ModalExclusao from "../_components/ModalExclusao";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 export default function MedicamentosScreen() {
-  const { medicamentos, deleteMedicamento } = useApp();
+  const [medicamentos, setMedicamentos] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  const listarMedicamentos = useCallback(async (skip = 0, take = 50) => {
+    try {
+      setLoading(true);
+      const response = await api.get("/medicamentos", {
+        params: { skip, take },
+      });
+
+      const dados =
+        response.data.medicamentos ||
+        response.data.dados ||
+        (Array.isArray(response.data) ? response.data : []);
+      setMedicamentos(dados);
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar medicamentos";
+      console.error("❌ Erro ao listar medicamentos:", mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      listarMedicamentos();
+    }, [listarMedicamentos]),
+  );
 
   const handleEditClick = (id: string) => {
     router.push({ pathname: "/medicamentos/editar", params: { id } });
@@ -32,9 +64,19 @@ export default function MedicamentosScreen() {
     setModalVisible(true);
   };
 
-  const confirmarExclusao = () => {
+  const confirmarExclusao = async () => {
     if (itemToDelete) {
-      deleteMedicamento(itemToDelete);
+      try {
+        await api.delete(`/medicamentos/${itemToDelete}`);
+        await listarMedicamentos();
+      } catch (error: any) {
+        const mensagem =
+          error.response?.data?.erro ||
+          error.response?.data?.message ||
+          error.message ||
+          "Falha ao deletar medicamento";
+        console.error("❌ Erro:", mensagem);
+      }
     }
     setModalVisible(false);
     setItemToDelete(null);
@@ -42,8 +84,10 @@ export default function MedicamentosScreen() {
 
   const filteredMedicamentos = medicamentos.filter(
     (m) =>
-      m.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      m.tipo.toLowerCase().includes(busca.toLowerCase()),
+      (m.nome_medicamento?.toLowerCase?.() || "").includes(
+        busca.toLowerCase(),
+      ) ||
+      (m.apresentacao?.toLowerCase?.() || "").includes(busca.toLowerCase()),
   );
 
   return (
@@ -86,39 +130,45 @@ export default function MedicamentosScreen() {
 
           <FlatList
             data={filteredMedicamentos}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) =>
+              item.id_medicamento ? String(item.id_medicamento) : String(index)
+            }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContainer}
             ListEmptyComponent={
-              <Text
-                style={{
-                  textAlign: "center",
-                  color: Colors.textSecondary,
-                  marginTop: 20,
-                }}
-              >
-                Nenhum medicamento encontrado.
-              </Text>
+              loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={{ color: Colors.textSecondary, marginTop: 12 }}>
+                    Carregando medicamentos...
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={{
+                    textAlign: "center",
+                    color: Colors.textSecondary,
+                    marginTop: 20,
+                  }}
+                >
+                  Nenhum medicamento encontrado.
+                </Text>
+              )
             }
             renderItem={({ item, index }) => (
               <ItemLista
                 data={[
-                  { label: "Nome", value: item.nome },
-                  { label: "Dosagem", value: item.dosagem },
-                  { label: "Tipo", value: item.tipo },
-                  { label: "Estoque", value: `${item.quantidade}un.` },
                   {
-                    label: "Status",
-                    value:
-                      parseInt(item.quantidade) > 0
-                        ? "Disponível"
-                        : "Indisponível",
-                    isStatus: parseInt(item.quantidade) > 0,
+                    label: "Nome",
+                    value: item.nome_medicamento || "N/A",
                   },
+                  { label: "Dosagem", value: item.dosagem || "N/A" },
+                  { label: "Apresentação", value: item.apresentacao || "N/A" },
+                  { label: "Descrição", value: item.descricao || "N/A" },
                 ]}
                 isLast={index === filteredMedicamentos.length - 1}
-                onEdit={() => handleEditClick(item.id)}
-                onDelete={() => handleDeleteClick(item.id)}
+                onEdit={() => handleEditClick(String(item.id_medicamento))}
+                onDelete={() => handleDeleteClick(String(item.id_medicamento))}
               />
             )}
           />
@@ -187,4 +237,11 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: "100%", fontSize: 14, color: Colors.text },
   listContainer: { paddingBottom: 20 },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
 });

@@ -1,5 +1,6 @@
+import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
-import { Lock, Mail, User } from "lucide-react-native";
+import { Lock, Mail, Phone, User } from "lucide-react-native";
 import React from "react";
 import {
   Image,
@@ -14,39 +15,77 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import { useNotification } from "../_components/NotificationContext";
+import api from "../services/api";
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { showNotification } = useNotification();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const [nomeCompleto, setNomeCompleto] = React.useState("");
+  const [nome, setNome] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [senha, setSenha] = React.useState("");
   const [confirmarSenha, setConfirmarSenha] = React.useState("");
+  const [tipoUsuario, setTipoUsuario] = React.useState("paciente");
+  const [telefone, setTelefone] = React.useState("");
+  const [carregando, setCarregando] = React.useState(false);
 
-  const handleRegister = () => {
-    if (
-      !nomeCompleto.trim() ||
-      !email.trim() ||
-      !senha.trim() ||
-      !confirmarSenha.trim()
-    ) {
-      showNotification("error", "Preencha todos os campos");
+  const handleRegistro = async () => {
+    // Validações
+    if (!nome.trim()) {
+      showNotification("error", "Nome é obrigatório");
       return;
     }
 
-    if (!emailRegex.test(email.trim())) {
-      showNotification("error", "Informe um e-mail válido");
+    if (!email.trim()) {
+      showNotification("error", "E-mail é obrigatório");
+      return;
+    }
+
+    if (!emailRegex.test(email)) {
+      showNotification("error", "E-mail inválido");
+      return;
+    }
+
+    if (!senha.trim()) {
+      showNotification("error", "Senha é obrigatória");
+      return;
+    }
+
+    if (senha.length < 6) {
+      showNotification("error", "Senha deve ter pelo menos 6 caracteres");
       return;
     }
 
     if (senha !== confirmarSenha) {
-      showNotification("error", "As senhas não conferem");
+      showNotification("error", "Senhas não conferem");
       return;
     }
 
-    showNotification("success", "Cadastro realizado com sucesso");
-    router.replace("/login" as any);
+    try {
+      setCarregando(true);
+      const cadastro = {
+        nome,
+        email,
+        senha,
+        tipo_usuario: tipoUsuario,
+        telefone: telefone || undefined,
+      };
+
+      const response = await api.post("/auth/registrar", cadastro);
+      showNotification("success", "Cadastro realizado com sucesso");
+      router.replace("/login" as any);
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Erro desconhecido";
+
+      alert(`Erro ao registrar:\n${mensagem}`);
+      showNotification("error", mensagem);
+    } finally {
+      setCarregando(false);
+    }
   };
 
   const handleGoToLogin = () => {
@@ -82,10 +121,10 @@ export default function RegisterScreen() {
               />
               <TextInput
                 style={styles.input}
-                placeholder="Nome completo"
+                placeholder="Nome"
                 placeholderTextColor={Colors.textSecondary}
-                value={nomeCompleto}
-                onChangeText={setNomeCompleto}
+                value={nome}
+                onChangeText={setNome}
               />
             </View>
           </View>
@@ -104,6 +143,24 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 value={email}
                 onChangeText={setEmail}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <View style={styles.inputWrapper}>
+              <Phone
+                size={20}
+                color={Colors.textSecondary}
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Telefone (opcional)"
+                placeholderTextColor={Colors.textSecondary}
+                value={telefone}
+                onChangeText={setTelefone}
+                keyboardType="phone-pad"
               />
             </View>
           </View>
@@ -144,8 +201,32 @@ export default function RegisterScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleRegister}>
-            <Text style={styles.loginButtonText}>CADASTRAR</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Tipo de usuário</Text>
+            <View style={styles.pickerWrapper}>
+              <Picker
+                selectedValue={tipoUsuario}
+                onValueChange={(itemValue: string) => setTipoUsuario(itemValue)}
+                style={styles.picker}
+              >
+                <Picker.Item label="COORDENADOR" value="coordenador" />
+                <Picker.Item label="PACIENTE" value="paciente" />
+                <Picker.Item label="ALUNO" value="aluno" />
+              </Picker>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.loginButton,
+              carregando && styles.loginButtonDisabled,
+            ]}
+            onPress={handleRegistro}
+            disabled={carregando}
+          >
+            <Text style={styles.loginButtonText}>
+              {carregando ? "CADASTRANDO..." : "CADASTRAR"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.registerContainer}>
@@ -192,7 +273,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.textSecondary,
     fontWeight: "600",
-    marginTop: 4,
+    marginTop: 50,
   },
   formContainer: {
     backgroundColor: Colors.white,
@@ -253,6 +334,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  loginButtonDisabled: {
+    opacity: 0.6,
+  },
   loginButtonText: {
     color: Colors.white,
     fontSize: 16,
@@ -275,7 +359,7 @@ const styles = StyleSheet.create({
   logoIesgo: {
     width: 200,
     height: 50,
-    marginBottom: 0,
+    marginBottom: -50,
     marginTop: 0,
   },
   logoLads: {
@@ -283,5 +367,23 @@ const styles = StyleSheet.create({
     height: 60,
     marginBottom: 10,
     marginTop: 10,
+  },
+  label: {
+    color: Colors.text,
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  pickerWrapper: {
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 0,
+    overflow: "hidden",
+  },
+  picker: {
+    height: 56,
+    color: Colors.text,
   },
 });

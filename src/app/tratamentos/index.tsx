@@ -1,7 +1,8 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Plus, Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -14,27 +15,118 @@ import { Colors } from "../_components/Colors";
 import Header from "../_components/Header";
 import ItemLista from "../_components/ItemLista";
 import ModalExclusao from "../_components/ModalExclusao";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
+
+const formatarData = (data: string) => {
+  if (!data) return "N/A";
+  try {
+    const date = new Date(data);
+    if (isNaN(date.getTime())) return data;
+    const dia = String(date.getDate()).padStart(2, "0");
+    const mes = String(date.getMonth() + 1).padStart(2, "0");
+    const ano = date.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  } catch {
+    return data;
+  }
+};
 
 export default function TratamentosScreen() {
-  const { tratamentos, deleteTratamento } = useApp();
+  const [tratamentos, setTratamentos] = useState<any[]>([]);
+  const [medicamentos, setMedicamentos] = useState<any[]>([]);
+  const [pacientes, setPacientes] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleEditClick = (id: string) => {
-    router.push({ pathname: "/tratamentos/editar", params: { id } });
+  const listarTratamentos = useCallback(async (skip = 0, take = 50) => {
+    try {
+      setLoading(true);
+      const [tratResponse, pacResponse, medResponse] = await Promise.all([
+        api.get("/tratamentos", { params: { skip, take } }),
+        api.get("/pacientes", { params: { skip: 0, take: 100 } }),
+        api.get("/medicamentos", { params: { skip: 0, take: 100 } }),
+      ]);
+      const dados =
+        tratResponse.data.tratamentos ||
+        tratResponse.data.dados ||
+        (Array.isArray(tratResponse.data) ? tratResponse.data : []);
+      setTratamentos(dados);
+      const pacDados =
+        pacResponse.data.dados ||
+        pacResponse.data.pacientes ||
+        (Array.isArray(pacResponse.data) ? pacResponse.data : []);
+      setPacientes(pacDados);
+      const medDados =
+        medResponse.data.medicamentos ||
+        medResponse.data.dados ||
+        (Array.isArray(medResponse.data) ? medResponse.data : []);
+      setMedicamentos(medDados);
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar tratamentos";
+      console.error("❌ Erro:", mensagem);
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const getNomePaciente = (idPaciente: any) => {
+    const paciente = pacientes.find((p) => p.id_paciente === idPaciente);
+    return (
+      paciente?.usuario?.nome ||
+      paciente?.nome ||
+      paciente?.numero_identificacao ||
+      String(idPaciente)
+    );
   };
 
-  const handleDeleteClick = (id: string) => {
-    setItemToDelete(id);
-    setModalVisible(true);
+  const getNomeMedicamento = (idMedicamento: any) => {
+    const medicamento = medicamentos.find(
+      (m) => m.id_medicamento === idMedicamento,
+    );
+    return medicamento?.nome_medicamento || String(idMedicamento);
   };
 
-  const confirmarExclusao = () => {
+  useFocusEffect(
+    React.useCallback(() => {
+      listarTratamentos();
+    }, [listarTratamentos]),
+  );
+
+  const handleEditClick = (id: string | undefined) => {
+    if (id) {
+      router.push({ pathname: "/tratamentos/editar", params: { id } });
+    }
+  };
+
+  const handleDeleteClick = (id: string | undefined) => {
+    if (id) {
+      setItemToDelete(id);
+      setModalVisible(true);
+    }
+  };
+
+  const confirmarExclusao = async () => {
     if (itemToDelete) {
-      deleteTratamento(itemToDelete);
+      try {
+        await api.delete(`/tratamentos/${itemToDelete}`);
+        Alert.alert("Sucesso", "Tratamento deletado");
+        listarTratamentos();
+      } catch (error: any) {
+        const mensagem =
+          error.response?.data?.erro ||
+          error.response?.data?.message ||
+          error.message ||
+          "Falha ao deletar tratamento";
+        Alert.alert("Erro", mensagem);
+      }
     }
     setModalVisible(false);
     setItemToDelete(null);
@@ -42,9 +134,14 @@ export default function TratamentosScreen() {
 
   const filteredTratamentos = tratamentos.filter(
     (t) =>
-      t.paciente.toLowerCase().includes(busca.toLowerCase()) ||
-      t.medicamento.toLowerCase().includes(busca.toLowerCase()) ||
-      t.posologia.toLowerCase().includes(busca.toLowerCase()),
+      (getNomePaciente(t.id_paciente)
+        ?.toLowerCase()
+        .includes(busca.toLowerCase()) ||
+        getNomeMedicamento(t.id_medicamento)
+          ?.toLowerCase()
+          .includes(busca.toLowerCase()) ||
+        t.frequencia?.toLowerCase().includes(busca.toLowerCase())) ??
+      false,
   );
 
   return (
@@ -86,7 +183,7 @@ export default function TratamentosScreen() {
 
           <FlatList
             data={filteredTratamentos}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id_tratamento || ""}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContainer}
             ListEmptyComponent={
@@ -103,16 +200,41 @@ export default function TratamentosScreen() {
             renderItem={({ item, index }) => (
               <ItemLista
                 data={[
-                  { label: "Paciente", value: item.paciente },
-                  { label: "Medicamento", value: item.medicamento },
-                  { label: "Farmacêutico", value: item.farmaceutico || "" },
-                  { label: "Posologia", value: item.posologia },
-                  { label: "Início", value: item.dataInicio || "" },
-                  { label: "Término", value: item.dataTermino || "" },
+                  {
+                    label: "Paciente",
+                    value: getNomePaciente(item.id_paciente),
+                  },
+                  {
+                    label: "Medicamento",
+                    value: getNomeMedicamento(item.id_medicamento),
+                  },
+                  {
+                    label: "Data de Início",
+                    value: formatarData(item.data_inicio),
+                  },
+                  { label: "Frequência", value: item.frequencia },
+                  {
+                    label: "Data de Término",
+                    value: item.data_fim
+                      ? formatarData(item.data_fim)
+                      : "Contínuo",
+                  },
+                  {
+                    label: "Dosagem Prescrita",
+                    value: item.dosagem_prescrita || "N/A",
+                  },
+                  {
+                    label: "Motivo do Tratamento",
+                    value: item.motivo_tratamento || "N/A",
+                  },
+                  {
+                    label: "Instruções Especiais",
+                    value: item.instrucoes_especiais || "N/A",
+                  },
                 ]}
                 isLast={index === filteredTratamentos.length - 1}
-                onEdit={() => handleEditClick(item.id)}
-                onDelete={() => handleDeleteClick(item.id)}
+                onEdit={() => handleEditClick(String(item.id_tratamento))}
+                onDelete={() => handleDeleteClick(String(item.id_tratamento))}
               />
             )}
           />

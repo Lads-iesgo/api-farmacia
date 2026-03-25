@@ -1,7 +1,8 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Plus, Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -14,27 +15,84 @@ import { Colors } from "../_components/Colors";
 import Header from "../_components/Header";
 import ItemLista from "../_components/ItemLista";
 import ModalExclusao from "../_components/ModalExclusao";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
+
+const formatarData = (data: string) => {
+  if (!data) return "N/A";
+  try {
+    const date = new Date(data);
+    const dia = String(date.getDate()).padStart(2, "0");
+    const mes = String(date.getMonth() + 1).padStart(2, "0");
+    const ano = date.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  } catch {
+    return "N/A";
+  }
+};
 
 export default function PacientesScreen() {
-  const { pacientes, deletePaciente } = useApp();
+  const [pacientes, setPacientes] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleEditClick = (id: string) => {
-    router.push({ pathname: "/pacientes/editar", params: { id } });
+  const listarPacientes = useCallback(async (skip = 0, take = 50) => {
+    try {
+      setLoading(true);
+      const response = await api.get("/pacientes", { params: { skip, take } });
+      const dados =
+        response.data.dados ||
+        response.data.pacientes ||
+        (Array.isArray(response.data) ? response.data : []);
+      setPacientes(dados);
+    } catch (error: any) {
+      const mensagem =
+        error.response?.data?.erro ||
+        error.response?.data?.message ||
+        error.message ||
+        "Falha ao carregar pacientes";
+      console.error("❌ Erro ao listar pacientes:", mensagem);
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      listarPacientes();
+    }, [listarPacientes]),
+  );
+
+  const handleEditClick = (id: string | undefined) => {
+    if (id) {
+      router.push({ pathname: "/pacientes/editar", params: { id } });
+    }
   };
 
-  const handleDeleteClick = (id: string) => {
-    setItemToDelete(id);
-    setModalVisible(true);
+  const handleDeleteClick = (id: string | undefined) => {
+    if (id) {
+      setItemToDelete(id);
+      setModalVisible(true);
+    }
   };
 
-  const confirmarExclusao = () => {
+  const confirmarExclusao = async () => {
     if (itemToDelete) {
-      deletePaciente(itemToDelete);
+      try {
+        await api.delete(`/pacientes/${itemToDelete}`);
+        Alert.alert("Sucesso", "Paciente deletado");
+        listarPacientes();
+      } catch (error: any) {
+        const mensagem =
+          error.response?.data?.erro ||
+          error.response?.data?.message ||
+          error.message ||
+          "Falha ao deletar paciente";
+        Alert.alert("Erro", mensagem);
+      }
     }
     setModalVisible(false);
     setItemToDelete(null);
@@ -42,9 +100,12 @@ export default function PacientesScreen() {
 
   const filteredPacientes = pacientes.filter(
     (p) =>
-      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      p.cpf.includes(busca) ||
-      p.telefone.includes(busca),
+      ((p.usuario?.nome || p.nome || "")
+        ?.toLowerCase()
+        .includes(busca.toLowerCase()) ||
+        p.numero_identificacao?.toLowerCase().includes(busca.toLowerCase()) ||
+        p.endereco?.toLowerCase().includes(busca.toLowerCase())) ??
+      false,
   );
 
   return (
@@ -87,7 +148,7 @@ export default function PacientesScreen() {
 
           <FlatList
             data={filteredPacientes}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id_paciente || ""}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContainer}
             ListEmptyComponent={
@@ -101,20 +162,42 @@ export default function PacientesScreen() {
                 Nenhum paciente encontrado.
               </Text>
             }
-            renderItem={({ item, index }) => (
-              <ItemLista
-                data={[
-                  { label: "Nome", value: item.nome },
-                  { label: "CPF", value: item.cpf },
-                  { label: "E-mail", value: item.email || "" },
-                  { label: "Telefone", value: item.telefone },
-                  { label: "Data de nascimento", value: item.dataNascimento },
-                ]}
-                isLast={index === filteredPacientes.length - 1}
-                onEdit={() => handleEditClick(item.id)}
-                onDelete={() => handleDeleteClick(item.id)}
-              />
-            )}
+            renderItem={({ item, index }) => {
+              const nomeExibir =
+                item.usuario?.nome ||
+                item.nome ||
+                item.numero_identificacao ||
+                "N/A";
+              return (
+                <ItemLista
+                  data={[
+                    {
+                      label: "Nome",
+                      value: nomeExibir,
+                    },
+                    {
+                      label: "Identificação",
+                      value: item.numero_identificacao,
+                    },
+                    {
+                      label: "Data de Nascimento",
+                      value: formatarData(item.data_nascimento),
+                    },
+                    {
+                      label: "Gênero",
+                      value: item.genero || "N/A",
+                    },
+                    { label: "Endereço", value: item.endereco || "N/A" },
+                    { label: "Cidade", value: item.cidade || "N/A" },
+                    { label: "Estado", value: item.estado || "N/A" },
+                    { label: "CEP", value: item.cep || "N/A" },
+                  ]}
+                  isLast={index === filteredPacientes.length - 1}
+                  onEdit={() => handleEditClick(item.id_paciente)}
+                  onDelete={() => handleDeleteClick(item.id_paciente)}
+                />
+              );
+            }}
           />
         </View>
 

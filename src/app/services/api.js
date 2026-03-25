@@ -1,0 +1,40 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+
+const API_BASE_URL = "http://10.0.2.2:3001/api"; // Use localhost para emulador Android
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+});
+
+// Interceptor para adicionar token automaticamente
+api.interceptors.request.use(
+  async (config) => {
+    try {
+      const token = await AsyncStorage.getItem("authToken");
+
+      if (token && token.length > 0) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (e) {
+      console.error("Erro ao recuperar token:", e);
+    }
+
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+// Interceptor para tratar erros
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      await AsyncStorage.removeItem("authToken");
+    }
+    return Promise.reject(error);
+  },
+);
+
+export default api;

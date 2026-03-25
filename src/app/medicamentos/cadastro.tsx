@@ -13,33 +13,45 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
+import api from "../services/api";
 
 export default function CadastroMedicamentoScreen() {
   const router = useRouter();
-  const { addMedicamento } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [dosagem, setDosagem] = useState("");
-  const [tipo, setTipo] = useState("");
-  const [quantidade, setQuantidade] = useState("");
-  const [descricao, setDescricao] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    dosagem: "",
+    apresentacao: "",
+    descricao: "",
+  });
 
-  const handleCadastrar = () => {
-    if (!nome || !quantidade) {
-      Alert.alert("Erro", "Preencha pelo menos Nome, Fabricante e Quantidade");
+  const handleCadastrar = async () => {
+    if (
+      !form.nome.trim() ||
+      !form.dosagem.trim() ||
+      !form.apresentacao.trim()
+    ) {
+      Alert.alert("Erro", "Preencha nome, dosagem e apresentação");
       return;
     }
 
-    addMedicamento({
-      nome,
-      dosagem,
-      tipo,
-      quantidade,
-      descricao,
-    });
+    setLoading(true);
+    try {
+      await api.post("/medicamentos", {
+        nome_medicamento: form.nome.trim(),
+        dosagem: form.dosagem.trim(),
+        apresentacao: form.apresentacao.trim(),
+        descricao: form.descricao.trim() || null,
+      });
 
-    router.push("/medicamentos");
+      Alert.alert("Sucesso", "Medicamento cadastrado");
+      router.push("/medicamentos");
+    } catch {
+      Alert.alert("Erro", "Falha ao cadastrar medicamento");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,52 +85,48 @@ export default function CadastroMedicamentoScreen() {
           <FormInput
             label="Nome do medicamento"
             placeholder="Ex: Paracetamol 500mg"
-            value={nome}
-            onChangeText={setNome}
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
             label="Dosagem"
             placeholder="Ex: 500mg"
-            value={dosagem}
-            onChangeText={setDosagem}
+            value={form.dosagem}
+            onChangeText={(v) => setForm({ ...form, dosagem: v })}
           />
 
           <FormInput
-            label="Tipo"
-            placeholder="Selecione o tipo"
-            value={tipo}
-            onChangeText={setTipo}
-          />
-
-          <FormInput
-            label="Quantidade em estoque"
-            placeholder="0"
-            keyboardType="numeric"
-            value={quantidade}
-            onChangeText={setQuantidade}
+            label="Apresentação"
+            placeholder="Ex: Comprimido, Cápsula, Xarope"
+            value={form.apresentacao}
+            onChangeText={(v) => setForm({ ...form, apresentacao: v })}
           />
 
           <FormInput
             label="Descrição"
-            placeholder="Descreva o medicamento e suas indicações"
+            placeholder="Descreva o medicamento"
             multiline
             style={{ height: 80, textAlignVertical: "top", paddingTop: 12 }}
-            value={descricao}
-            onChangeText={setDescricao}
+            value={form.descricao}
+            onChangeText={(v) => setForm({ ...form, descricao: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleCadastrar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Cadastrar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Cadastrando..." : "Cadastrar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/medicamentos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -156,6 +164,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
   },
+  buttonDisabled: { opacity: 0.6 },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
     backgroundColor: Colors.white,

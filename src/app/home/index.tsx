@@ -1,4 +1,4 @@
-import { ClipboardCheck, Pill, Stethoscope, Users } from "lucide-react-native";
+import { ClipboardCheck, Pill, Users } from "lucide-react-native";
 import React from "react";
 import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,8 +9,36 @@ import { useApp } from "../_interfaces/AppContext";
 
 const screenWidth = Dimensions.get("window").width;
 
+const formatarDataISO = (data: string) => {
+  if (!data) return "-";
+  try {
+    const date = new Date(data);
+    if (isNaN(date.getTime())) return data;
+    const dia = String(date.getDate()).padStart(2, "0");
+    const mes = String(date.getMonth() + 1).padStart(2, "0");
+    const ano = date.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  } catch {
+    return data;
+  }
+};
+
+const parseData = (valor: string) => {
+  if (!valor) return null;
+  // Tenta ISO primeiro
+  const dateISO = new Date(valor);
+  if (!isNaN(dateISO.getTime())) return dateISO;
+  // Tenta BR (dd/mm/aaaa)
+  const [diaStr, mesStr, anoStr] = valor.split("/");
+  const dia = Number(diaStr);
+  const mes = Number(mesStr);
+  const ano = Number(anoStr);
+  if (!dia || !mes || !ano) return null;
+  return new Date(ano, mes - 1, dia);
+};
+
 export default function HomeScreen() {
-  const { pacientes, medicamentos, farmaceuticos, tratamentos } = useApp();
+  const { pacientes, medicamentos, tratamentos } = useApp();
 
   // Dados do gráfico de tratamentos por mês
   const nomesMeses = [
@@ -61,7 +89,7 @@ export default function HomeScreen() {
 
   const dadosGrafico = ultimosSeisMeses.map((periodo) => {
     const total = tratamentos.filter((tratamento) => {
-      const dataInicio = parseDataBR(tratamento.dataInicio || "");
+      const dataInicio = parseData(tratamento.data_inicio || "");
       if (!dataInicio) return false;
       return (
         dataInicio.getMonth() === periodo.mes &&
@@ -80,7 +108,7 @@ export default function HomeScreen() {
   // Medicamentos mais utilizados (baseado no uso em tratamentos)
   const usosPorMedicamento = tratamentos.reduce<Record<string, number>>(
     (acc, tratamento) => {
-      const chave = tratamento.medicamento.trim().toLowerCase();
+      const chave = String(tratamento.id_medicamento || "");
       if (!chave) return acc;
       acc[chave] = (acc[chave] || 0) + 1;
       return acc;
@@ -89,15 +117,15 @@ export default function HomeScreen() {
   );
 
   const medicamentosMaisUsados = Object.entries(usosPorMedicamento)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([nomeNormalizado, totalUsos]) => {
+    .map(([idNormalizado, totalUsos]) => {
       const medicamentoCadastro = medicamentos.find(
-        (med) => med.nome.trim().toLowerCase() === nomeNormalizado,
+        (med) => String(med.id_medicamento) === idNormalizado,
       );
 
       return {
-        nome: medicamentoCadastro?.nome || nomeNormalizado,
+        nome: medicamentoCadastro?.nome_medicamento || idNormalizado,
         quantidade: `${totalUsos} uso${totalUsos > 1 ? "s" : ""}`,
         dosagem: medicamentoCadastro?.dosagem || "-",
       };
@@ -107,8 +135,8 @@ export default function HomeScreen() {
   const tratamentosRecentes = tratamentos
     .map((tratamento, indice) => ({ tratamento, indice }))
     .sort((a, b) => {
-      const dataA = parseDataBR(a.tratamento.dataInicio || "");
-      const dataB = parseDataBR(b.tratamento.dataInicio || "");
+      const dataA = parseData(a.tratamento.data_inicio || "");
+      const dataB = parseData(b.tratamento.data_inicio || "");
       const timeA = dataA ? dataA.getTime() : 0;
       const timeB = dataB ? dataB.getTime() : 0;
 
@@ -119,12 +147,23 @@ export default function HomeScreen() {
       return timeB - timeA;
     })
     .slice(0, 3)
-    .map(({ tratamento }) => ({
-      paciente: tratamento.paciente,
-      medicamento: tratamento.medicamento,
-      farmaceutico: tratamento.farmaceutico || "Não informado",
-      data: tratamento.dataInicio,
-    }));
+    .map(({ tratamento }) => {
+      const med = medicamentos.find(
+        (m) => m.id_medicamento === tratamento.id_medicamento,
+      );
+      const pac = pacientes.find(
+        (p: any) => String(p.id_paciente) === String(tratamento.id_paciente),
+      );
+      return {
+        paciente:
+          (pac as any)?.usuario?.nome ||
+          (pac as any)?.nome ||
+          String(tratamento.id_paciente),
+        medicamento: med?.nome_medicamento || "-",
+        farmaceutico: "N/A",
+        data: formatarDataISO(tratamento.data_inicio),
+      };
+    });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -152,11 +191,6 @@ export default function HomeScreen() {
           title="Medicamentos em estoque"
           value={String(medicamentos.length)}
           icon={<Pill size={24} color={Colors.success} />}
-        />
-        <CardEstatistica
-          title="Farmacêuticos ativos"
-          value={String(farmaceuticos.length)}
-          icon={<Stethoscope size={24} color="#8B5CF6" />}
         />
         <CardEstatistica
           title="Tratamentos em andamento"

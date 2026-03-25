@@ -13,51 +13,48 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "../_components/Colors";
 import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
-import { useApp } from "../_interfaces/AppContext";
-
-const formatarTelefone = (valor: string) => {
-  const numeros = valor.replace(/\D/g, "").slice(0, 11);
-  if (numeros.length <= 10) {
-    return numeros
-      .replace(/(\d{2})(\d)/, "($1) $2")
-      .replace(/(\d{4})(\d)/, "$1-$2");
-  }
-  return numeros
-    .replace(/(\d{2})(\d)/, "($1) $2")
-    .replace(/(\d{5})(\d)/, "$1-$2");
-};
-
-const validarEmail = (valor: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor);
+import api from "../services/api";
 
 export default function CadastroFarmaceuticoScreen() {
   const router = useRouter();
-  const { addFarmaceutico } = useApp();
+  const [loading, setLoading] = useState(false);
 
-  const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [especialidade, setEspecialidade] = useState("");
+  const [form, setForm] = useState({
+    nome: "",
+    email: "",
+    telefone: "",
+    especialidade: "",
+  });
 
-  const handleCadastrar = () => {
-    if (!nome || !especialidade) {
-      Alert.alert("Erro", "Preencha pelo menos Nome e Especialidade");
+  const formatarTelefone = (valor: string) => {
+    const numeros = valor.replace(/\D/g, "").slice(0, 11);
+    if (numeros.length <= 2) return numeros;
+    if (numeros.length <= 7) return numeros.replace(/(\d{2})(\d)/, "($1) $2");
+    return numeros.replace(/(\d{2})(\d{5})(\d)/, "($1) $2-$3");
+  };
+
+  const handleCadastrar = async () => {
+    if (!form.nome || !form.email || !form.telefone) {
+      Alert.alert("Erro", "Preencha nome, email e telefone");
       return;
     }
 
-    if (email && !validarEmail(email)) {
-      Alert.alert("Erro", "E-mail inválido. Use o formato exemplo@dominio.com");
-      return;
+    setLoading(true);
+    try {
+      await api.post("/farmaceuticos", {
+        nome: form.nome,
+        email: form.email,
+        telefone: form.telefone,
+        especialidade: form.especialidade || null,
+      });
+
+      Alert.alert("Sucesso", "Farmacêutico cadastrado");
+      router.push("/farmaceuticos");
+    } catch {
+      Alert.alert("Erro", "Falha ao cadastrar farmacêutico");
+    } finally {
+      setLoading(false);
     }
-
-    addFarmaceutico({
-      nome,
-      email,
-      telefone,
-      especialidade,
-    });
-
-    router.push("/farmaceuticos");
   };
 
   return (
@@ -78,7 +75,7 @@ export default function CadastroFarmaceuticoScreen() {
           <View>
             <Text style={styles.pageTitle}>Cadastrar farmacêutico</Text>
             <Text style={styles.pageSubtitle}>
-              Preencha os dados do novo farmacêutico
+              Preencha os dados do profissional
             </Text>
           </View>
         </View>
@@ -89,47 +86,52 @@ export default function CadastroFarmaceuticoScreen() {
           </Text>
 
           <FormInput
-            label="Nome completo"
-            placeholder="Digite o nome completo"
-            value={nome}
-            onChangeText={setNome}
+            label="Nome *"
+            placeholder="Nome completo"
+            value={form.nome}
+            onChangeText={(v) => setForm({ ...form, nome: v })}
           />
 
           <FormInput
-            label="E-mail"
-            placeholder="email@exemplo.com"
+            label="Email *"
+            placeholder="email@example.com"
             keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
+            value={form.email}
+            onChangeText={(v) => setForm({ ...form, email: v })}
           />
 
           <FormInput
-            label="Telefone"
-            placeholder="(11) 98765-4321"
+            label="Telefone *"
+            placeholder="(11) 99999-9999"
             keyboardType="phone-pad"
-            value={telefone}
-            onChangeText={(v) => setTelefone(formatarTelefone(v))}
+            value={form.telefone}
+            onChangeText={(v) =>
+              setForm({ ...form, telefone: formatarTelefone(v) })
+            }
           />
 
           <FormInput
             label="Especialidade"
-            placeholder="Ex: Farmácia Clínica"
-            value={especialidade}
-            onChangeText={setEspecialidade}
+            placeholder="Ex: Farmacologia"
+            value={form.especialidade}
+            onChangeText={(v) => setForm({ ...form, especialidade: v })}
           />
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={styles.submitButton}
+              style={[styles.submitButton, loading && styles.buttonDisabled]}
               onPress={handleCadastrar}
+              disabled={loading}
             >
-              <Text style={styles.submitButtonText}>Cadastrar</Text>
+              <Text style={styles.submitButtonText}>
+                {loading ? "Cadastrando..." : "Cadastrar"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => router.push("/farmaceuticos")}
+              disabled={loading}
             >
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
@@ -162,10 +164,13 @@ const styles = StyleSheet.create({
   },
   buttonsContainer: { marginTop: 8, gap: 12 },
   submitButton: {
-    backgroundColor: "#002470ff",
+    backgroundColor: "#0A1833",
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   submitButtonText: { color: Colors.white, fontSize: 16, fontWeight: "bold" },
   cancelButton: {
