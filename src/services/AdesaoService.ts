@@ -4,6 +4,8 @@ export interface CriarAdesaoDTO {
   id_tratamento: number;
   id_paciente: number;
   data_prevista: Date;
+  data_tomada?: Date;
+  status?: "PENDENTE" | "TOMADO" | "PERDIDO" | "ADIADO";
 }
 
 export interface AtualizarAdesaoDTO {
@@ -37,6 +39,8 @@ export class AdesaoService {
         id_tratamento: dados.id_tratamento,
         id_paciente: dados.id_paciente,
         data_prevista: dados.data_prevista,
+        data_tomada: dados.data_tomada,
+        status: dados.status || (dados.data_tomada ? "TOMADO" : "PENDENTE"),
       },
       include: {
         tratamento: {

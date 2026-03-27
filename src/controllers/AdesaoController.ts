@@ -7,7 +7,8 @@ const adesaoService = new AdesaoService();
 export class AdesaoController {
   async criar(req: AuthRequest, res: Response) {
     try {
-      const { id_tratamento, id_paciente, data_prevista } = req.body;
+      const { id_tratamento, id_paciente, data_prevista, data_tomada, status } =
+        req.body;
 
       if (!id_tratamento || !id_paciente || !data_prevista) {
         return res.status(400).json({
@@ -19,6 +20,8 @@ export class AdesaoController {
         id_tratamento,
         id_paciente,
         data_prevista: new Date(data_prevista),
+        data_tomada: data_tomada ? new Date(data_tomada) : undefined,
+        status: status,
       });
 
       return res.status(201).json({
