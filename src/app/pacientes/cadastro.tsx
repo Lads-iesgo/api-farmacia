@@ -65,16 +65,28 @@ export default function CadastroPacienteScreen() {
         return;
       }
 
-      const decoded = decodificarToken(token);
-      const idUsuario = decoded?.id || decoded?.id_usuario || decoded?.sub;
+      // 1. Criar o "Usuario" atrelado ao Paciente no banco
+      const cpfNumeros = form.numeroIdentificacao.replace(/\D/g, "");
 
-      if (!idUsuario) {
-        showNotification("error", "ID do usuário não encontrado no token");
+      const responseAuth = await api.post("/auth/registrar", {
+        nome: form.nome,
+        email: `paciente_${cpfNumeros}@farmacia.local`, // e-mail gerado automaticamente
+        senha: `Paciente@${cpfNumeros}`, // senha padrão temporária
+        tipo_usuario: "PACIENTE",
+      });
+
+      const novoUsuario = responseAuth.data.usuario;
+      const novoIdUsuario = novoUsuario?.id_usuario;
+
+      if (!novoIdUsuario) {
+        showNotification("error", "Falha ao criar usuário para o paciente");
         setLoading(false);
         return;
       }
 
+      // 2. Criar o "Paciente" com o `id_usuario` correto
       await api.post("/pacientes", {
+        id_usuario: Number(novoIdUsuario),
         nome: form.nome,
         numero_identificacao: form.numeroIdentificacao,
         data_nascimento: converterDataParaISO(form.dataNascimento),

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePathname, useRouter } from "expo-router";
 import {
+  CalendarCheck,
   ClipboardList,
   Home,
   LogOut,
@@ -32,12 +33,13 @@ interface NavbarProps {
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.72;
 
-const menuItems = [
+const allMenuItems = [
   { label: "Dashboard", icon: Home, route: "/home" },
   { label: "Farmacêuticos", icon: Stethoscope, route: "/farmaceuticos" },
   { label: "Pacientes", icon: Users, route: "/pacientes" },
   { label: "Medicamentos", icon: Pill, route: "/medicamentos" },
   { label: "Tratamentos", icon: ClipboardList, route: "/tratamentos" },
+  { label: "Adesões", icon: CalendarCheck, route: "/adesoes" },
 ];
 
 export default function Navbar({ visible, onClose }: NavbarProps) {
@@ -145,31 +147,40 @@ export default function Navbar({ visible, onClose }: NavbarProps) {
 
         {/* Menu Items */}
         <View style={styles.menuContainer}>
-          {menuItems.map((item, index) => {
-            const active = isActive(item.route);
-            const IconComponent = item.icon;
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[styles.menuItem, active && styles.menuItemActive]}
-                onPress={() => handleNavigate(item.route)}
-                activeOpacity={0.7}
-              >
-                <IconComponent
-                  size={20}
-                  color={active ? Colors.white : "rgba(255,255,255,0.7)"}
-                />
-                <Text
-                  style={[
-                    styles.menuItemText,
-                    active && styles.menuItemTextActive,
-                  ]}
+          {allMenuItems
+            .filter((item) => {
+              if (userRole?.toUpperCase() === "PACIENTE") {
+                return ["Dashboard", "Tratamentos", "Adesões"].includes(
+                  item.label,
+                );
+              }
+              return true;
+            })
+            .map((item, index) => {
+              const active = isActive(item.route);
+              const IconComponent = item.icon;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.menuItem, active && styles.menuItemActive]}
+                  onPress={() => handleNavigate(item.route)}
+                  activeOpacity={0.7}
                 >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <IconComponent
+                    size={20}
+                    color={active ? Colors.white : "rgba(255,255,255,0.7)"}
+                  />
+                  <Text
+                    style={[
+                      styles.menuItemText,
+                      active && styles.menuItemTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
         </View>
 
         {/* Sair */}

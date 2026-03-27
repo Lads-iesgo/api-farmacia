@@ -159,12 +159,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await AsyncStorage.setItem(USER_ID_STORAGE_KEY, id);
   };
 
-  // Carregar todos os dados ao montar
+  // Carregar todos os dados ao montar apenas se estiver autenticado
   useEffect(() => {
-    loadMedicamentos();
-    loadPacientes();
-    loadTratamentos();
-    loadAdesoes();
+    const carregarSeAutenticado = async () => {
+      const token = await AsyncStorage.getItem("authToken");
+      if (token) {
+        loadMedicamentos();
+        loadPacientes();
+        loadTratamentos();
+        loadAdesoes();
+      }
+    };
+    carregarSeAutenticado();
   }, []);
 
   // Carregar medicamentos para API

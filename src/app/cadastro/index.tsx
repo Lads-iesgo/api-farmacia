@@ -25,7 +25,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = React.useState("");
   const [senha, setSenha] = React.useState("");
   const [confirmarSenha, setConfirmarSenha] = React.useState("");
-  const [tipoUsuario, setTipoUsuario] = React.useState("paciente");
+  const [tipoUsuario, setTipoUsuario] = React.useState("PACIENTE");
   const [telefone, setTelefone] = React.useState("");
   const [carregando, setCarregando] = React.useState(false);
 
@@ -208,9 +208,9 @@ export default function RegisterScreen() {
                 onValueChange={(itemValue: string) => setTipoUsuario(itemValue)}
                 style={styles.picker}
               >
-                <Picker.Item label="COORDENADOR" value="coordenador" />
-                <Picker.Item label="PACIENTE" value="paciente" />
-                <Picker.Item label="ALUNO" value="aluno" />
+                <Picker.Item label="COORDENADOR" value="COORDENADOR" />
+                <Picker.Item label="PACIENTE" value="PACIENTE" />
+                <Picker.Item label="ALUNO" value="ALUNO" />
               </Picker>
             </View>
           </View>

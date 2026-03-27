@@ -35,36 +35,71 @@ export default function TratamentosScreen() {
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [medicamentos, setMedicamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
+  const [farmaceuticos, setFarmaceuticos] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [userRole, setUserRole] = useState("");
+  const [userId, setUserId] = useState("");
   const router = useRouter();
   const { showNotification } = useNotification();
 
   const listarTratamentos = useCallback(async (skip = 0, take = 50) => {
     try {
       setLoading(true);
-      const [tratResponse, pacResponse, medResponse] = await Promise.all([
-        api.get("/tratamentos", { params: { skip, take } }),
-        api.get("/pacientes", { params: { skip: 0, take: 100 } }),
-        api.get("/medicamentos", { params: { skip: 0, take: 100 } }),
-      ]);
-      const dados =
+      const AsyncStorage = (
+        await import("@react-native-async-storage/async-storage")
+      ).default;
+      const role = (await AsyncStorage.getItem("@app-farmacia:userRole")) || "";
+      const idStr = (await AsyncStorage.getItem("@app-farmacia:userId")) || "";
+      setUserRole(role.toUpperCase());
+      setUserId(idStr);
+
+      const [tratResponse, pacResponse, medResponse, farmResponse] =
+        await Promise.all([
+          api.get("/tratamentos", { params: { skip, take } }),
+          api.get("/pacientes", { params: { skip: 0, take: 100 } }),
+          api.get("/medicamentos", { params: { skip: 0, take: 100 } }),
+          api
+            .get("/farmaceuticos", { params: { skip: 0, take: 100 } })
+            .catch(() => ({ data: [] })),
+        ]);
+      let dados =
         tratResponse.data.tratamentos ||
         tratResponse.data.dados ||
         (Array.isArray(tratResponse.data) ? tratResponse.data : []);
-      setTratamentos(dados);
       const pacDados =
         pacResponse.data.dados ||
         pacResponse.data.pacientes ||
         (Array.isArray(pacResponse.data) ? pacResponse.data : []);
+
+      if (role.toUpperCase() === "PACIENTE") {
+        const me = pacDados.find(
+          (p: any) => String(p.id_usuario) === String(idStr),
+        );
+        if (me) {
+          dados = dados.filter(
+            (t: any) => String(t.id_paciente) === String(me.id_paciente),
+          );
+        } else {
+          dados = [];
+        }
+      }
+
+      setTratamentos(dados);
       setPacientes(pacDados);
       const medDados =
         medResponse.data.medicamentos ||
         medResponse.data.dados ||
         (Array.isArray(medResponse.data) ? medResponse.data : []);
       setMedicamentos(medDados);
+
+      const farmDados =
+        farmResponse.data.farmaceuticos ||
+        farmResponse.data.dados ||
+        (Array.isArray(farmResponse.data) ? farmResponse.data : []);
+      setFarmaceuticos(farmDados);
     } catch (error: any) {
       const mensagem =
         error.response?.data?.erro ||
@@ -93,6 +128,14 @@ export default function TratamentosScreen() {
       (m) => m.id_medicamento === idMedicamento,
     );
     return medicamento?.nome_medicamento || String(idMedicamento);
+  };
+
+  const getNomeFarmaceutico = (idFarmaceutico: any) => {
+    if (!idFarmaceutico) return "N/A";
+    const farmaceutico = farmaceuticos.find(
+      (f) => f.id_farmaceutico === idFarmaceutico,
+    );
+    return farmaceutico?.nome || farmaceutico?.email || String(idFarmaceutico);
   };
 
   useFocusEffect(
@@ -156,13 +199,15 @@ export default function TratamentosScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push("/tratamentos/cadastro")}
-        >
-          <Plus size={20} color={Colors.white} />
-          <Text style={styles.addButtonText}>Adicionar tratamento</Text>
-        </TouchableOpacity>
+        {userRole !== "PACIENTE" && (
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push("/tratamentos/cadastro")}
+          >
+            <Plus size={20} color={Colors.white} />
+            <Text style={styles.addButtonText}>Adicionar tratamento</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Lista de tratamentos</Text>
@@ -210,6 +255,10 @@ export default function TratamentosScreen() {
                     value: getNomeMedicamento(item.id_medicamento),
                   },
                   {
+                    label: "Farmacêutico",
+                    value: getNomeFarmaceutico(item.id_farmaceutico),
+                  },
+                  {
                     label: "Data de Início",
                     value: formatarData(item.data_inicio),
                   },
@@ -234,8 +283,16 @@ export default function TratamentosScreen() {
                   },
                 ]}
                 isLast={index === filteredTratamentos.length - 1}
-                onEdit={() => handleEditClick(String(item.id_tratamento))}
-                onDelete={() => handleDeleteClick(String(item.id_tratamento))}
+                onEdit={
+                  userRole !== "PACIENTE"
+                    ? () => handleEditClick(String(item.id_tratamento))
+                    : undefined
+                }
+                onDelete={
+                  userRole !== "PACIENTE"
+                    ? () => handleDeleteClick(String(item.id_tratamento))
+                    : undefined
+                }
               />
             )}
           />

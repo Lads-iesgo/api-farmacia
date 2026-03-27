@@ -1,5 +1,6 @@
+import { useFocusEffect } from "expo-router";
 import { ClipboardCheck, Pill, Users } from "lucide-react-native";
-import React from "react";
+import React, { useCallback } from "react";
 import { Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CardEstatistica from "../_components/CardEstatistica";
@@ -11,7 +12,34 @@ import { formatarData, parseData } from "../_utils/formatters";
 const screenWidth = Dimensions.get("window").width;
 
 export default function HomeScreen() {
-  const { pacientes, medicamentos, tratamentos } = useApp();
+  const [userRole, setUserRole] = React.useState("");
+
+  const {
+    pacientes,
+    medicamentos,
+    tratamentos,
+    loadPacientes,
+    loadMedicamentos,
+    loadTratamentos,
+  } = useApp();
+
+  // Recarrega os dados da API sempre que a tela do dashboard ganhar foco
+  useFocusEffect(
+    useCallback(() => {
+      const fetchRole = async () => {
+        const AsyncStorage = (
+          await import("@react-native-async-storage/async-storage")
+        ).default;
+        const role = await AsyncStorage.getItem("@app-farmacia:userRole");
+        if (role) setUserRole(role.toUpperCase());
+      };
+      fetchRole();
+
+      loadPacientes();
+      loadMedicamentos();
+      loadTratamentos();
+    }, []),
+  );
 
   // Dados do gráfico de tratamentos por mês
   const nomesMeses = [
@@ -126,92 +154,128 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Título Dashboard */}
-        <View style={styles.titleSection}>
-          <Text style={styles.dashboardTitle}>Dashboard</Text>
-          <Text style={styles.dashboardSubtitle}>
-            Bem-vindo ao sistema de gestão farmacêutica
-          </Text>
-        </View>
-
-        {/* Cards de Estatísticas */}
-        <CardEstatistica
-          title="Total de pacientes"
-          value={String(pacientes.length)}
-          icon={<Users size={24} color={Colors.primary} />}
-        />
-        <CardEstatistica
-          title="Medicamentos em estoque"
-          value={String(medicamentos.length)}
-          icon={<Pill size={24} color={Colors.success} />}
-        />
-        <CardEstatistica
-          title="Tratamentos em andamento"
-          value={String(tratamentos.length)}
-          icon={<ClipboardCheck size={24} color={Colors.success} />}
-        />
-
-        {/* Gráfico de Tratamentos por Mês */}
-        <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}> Tratamentos por Mês</Text>
-          <View style={styles.chartContainer}>
-            {dadosGrafico.map((item, index) => (
-              <View key={`${item.label}-${index}`} style={styles.barContainer}>
-                <Text style={styles.barValue}>{item.valor}</Text>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: (item.valor / maxValor) * 120,
-                      backgroundColor: Colors.primary,
-                    },
-                  ]}
-                />
-                <Text style={styles.barLabel}>{item.label}</Text>
-              </View>
-            ))}
+        {userRole === "PACIENTE" ? (
+          <View style={styles.titleSection}>
+            <Text style={styles.dashboardTitle}>
+              Bem-vindo ao Sistema de farmacia!
+            </Text>
+            <Text style={styles.dashboardSubtitle}>
+              Aqui você pode acompanhar seus tratamentos e registrar suas
+              adesões.
+            </Text>
+            <View style={{ marginTop: 40, alignItems: "center" }}>
+              <ClipboardCheck
+                size={64}
+                color={Colors.primary}
+                style={{ marginBottom: 16 }}
+              />
+              <Text
+                style={{
+                  fontSize: 16,
+                  color: Colors.textSecondary,
+                  textAlign: "center",
+                }}
+              >
+                Acesse o menu lateral para conferir os seus tratamentos
+                receitados pelo médico.
+              </Text>
+            </View>
           </View>
-          <View style={styles.legendContainer}>
-            <View style={styles.legendDot} />
-            <Text style={styles.legendText}>tratamentos</Text>
-          </View>
-        </View>
+        ) : (
+          <>
+            {/* Título Dashboard */}
+            <View style={styles.titleSection}>
+              <Text style={styles.dashboardTitle}>Dashboard</Text>
+              <Text style={styles.dashboardSubtitle}>
+                Bem-vindo ao sistema de gestão farmacêutica
+              </Text>
+            </View>
 
-        {/* Medicamentos Mais Utilizados */}
-        <View style={styles.listCard}>
-          <Text style={styles.listTitle}>Medicamentos mais utilizados</Text>
-          {medicamentosMaisUsados.map((med, index) => (
-            <View key={index} style={styles.listItem}>
-              <View style={styles.listItemNumber}>
-                <Text style={styles.listItemNumberText}>{index + 1}</Text>
+            {/* Cards de Estatísticas */}
+            <CardEstatistica
+              title="Total de pacientes"
+              value={String(pacientes.length)}
+              icon={<Users size={24} color={Colors.primary} />}
+            />
+            <CardEstatistica
+              title="Medicamentos em estoque"
+              value={String(medicamentos.length)}
+              icon={<Pill size={24} color={Colors.success} />}
+            />
+            <CardEstatistica
+              title="Tratamentos em andamento"
+              value={String(tratamentos.length)}
+              icon={<ClipboardCheck size={24} color={Colors.success} />}
+            />
+
+            {/* Gráfico de Tratamentos por Mês */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}> Tratamentos por Mês</Text>
+              <View style={styles.chartContainer}>
+                {dadosGrafico.map((item, index) => (
+                  <View
+                    key={`${item.label}-${index}`}
+                    style={styles.barContainer}
+                  >
+                    <Text style={styles.barValue}>{item.valor}</Text>
+                    <View
+                      style={[
+                        styles.bar,
+                        {
+                          height: (item.valor / maxValor) * 120,
+                          backgroundColor: Colors.primary,
+                        },
+                      ]}
+                    />
+                    <Text style={styles.barLabel}>{item.label}</Text>
+                  </View>
+                ))}
               </View>
-              <View style={styles.listItemContent}>
-                <Text style={styles.listItemName}>{med.nome}</Text>
-              </View>
-              <View style={styles.listItemRight}>
-                <Text style={styles.listItemQuantity}>{med.quantidade}</Text>
-                <Text style={styles.listItemDosage}>{med.dosagem}</Text>
+              <View style={styles.legendContainer}>
+                <View style={styles.legendDot} />
+                <Text style={styles.legendText}>tratamentos</Text>
               </View>
             </View>
-          ))}
-        </View>
 
-        {/* Tratamentos Recentes */}
-        <View style={[styles.listCard, { marginBottom: 32 }]}>
-          <Text style={styles.listTitle}>Tratamentos recentes</Text>
-          {tratamentosRecentes.map((trat, index) => (
-            <View key={index} style={styles.listItem}>
-              <View style={styles.listItemContent}>
-                <Text style={styles.listItemName}>{trat.paciente}</Text>
-                <Text style={styles.listItemSub}>{trat.medicamento}</Text>
-              </View>
-              <View style={styles.listItemRight}>
-                <Text style={styles.listItemSub}>{trat.farmaceutico}</Text>
-                <Text style={styles.listItemDosage}>{trat.data}</Text>
-              </View>
+            {/* Medicamentos Mais Utilizados */}
+            <View style={styles.listCard}>
+              <Text style={styles.listTitle}>Medicamentos mais utilizados</Text>
+              {medicamentosMaisUsados.map((med, index) => (
+                <View key={index} style={styles.listItem}>
+                  <View style={styles.listItemNumber}>
+                    <Text style={styles.listItemNumberText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.listItemContent}>
+                    <Text style={styles.listItemName}>{med.nome}</Text>
+                  </View>
+                  <View style={styles.listItemRight}>
+                    <Text style={styles.listItemQuantity}>
+                      {med.quantidade}
+                    </Text>
+                    <Text style={styles.listItemDosage}>{med.dosagem}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+
+            {/* Tratamentos Recentes */}
+            <View style={[styles.listCard, { marginBottom: 32 }]}>
+              <Text style={styles.listTitle}>Tratamentos recentes</Text>
+              {tratamentosRecentes.map((trat, index) => (
+                <View key={index} style={styles.listItem}>
+                  <View style={styles.listItemContent}>
+                    <Text style={styles.listItemName}>{trat.paciente}</Text>
+                    <Text style={styles.listItemSub}>{trat.medicamento}</Text>
+                  </View>
+                  <View style={styles.listItemRight}>
+                    <Text style={styles.listItemSub}>{trat.farmaceutico}</Text>
+                    <Text style={styles.listItemDosage}>{trat.data}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

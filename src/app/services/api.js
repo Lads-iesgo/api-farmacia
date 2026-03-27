@@ -15,7 +15,11 @@ api.interceptors.request.use(
       const token = await AsyncStorage.getItem("authToken");
 
       if (token && token.length > 0) {
-        config.headers.Authorization = `Bearer ${token}`;
+        if (config.headers && typeof config.headers.set === "function") {
+          config.headers.set("Authorization", `Bearer ${token}`);
+        } else {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
       }
     } catch (e) {
       console.error("Erro ao recuperar token:", e);

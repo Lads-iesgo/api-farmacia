@@ -34,11 +34,13 @@ export default function CadastroTratamentoScreen() {
   const { showNotification } = useNotification();
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [medicamentos, setMedicamentos] = useState<any[]>([]);
+  const [farmaceuticos, setFarmaceuticos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     idPaciente: "",
     idMedicamento: "",
+    idFarmaceutico: "",
     dataInicio: "",
     frequencia: "",
     dataFim: "",
@@ -50,9 +52,12 @@ export default function CadastroTratamentoScreen() {
   React.useEffect(() => {
     const carregarDados = async () => {
       try {
-        const [pacResponse, medResponse] = await Promise.all([
+        const [pacResponse, medResponse, farmResponse] = await Promise.all([
           api.get("/pacientes", { params: { skip: 0, take: 100 } }),
           api.get("/medicamentos", { params: { skip: 0, take: 100 } }),
+          api
+            .get("/farmaceuticos", { params: { skip: 0, take: 100 } })
+            .catch(() => ({ data: [] })),
         ]);
         setPacientes(
           pacResponse.data.dados ||
@@ -63,6 +68,11 @@ export default function CadastroTratamentoScreen() {
           medResponse.data.medicamentos ||
             medResponse.data.dados ||
             (Array.isArray(medResponse.data) ? medResponse.data : []),
+        );
+        setFarmaceuticos(
+          farmResponse.data.farmaceuticos ||
+            farmResponse.data.dados ||
+            (Array.isArray(farmResponse.data) ? farmResponse.data : []),
         );
       } catch {
         showNotification("error", "Falha ao carregar dados");
@@ -75,12 +85,13 @@ export default function CadastroTratamentoScreen() {
     if (
       !form.idPaciente ||
       !form.idMedicamento ||
+      !form.idFarmaceutico ||
       !form.dataInicio ||
       !form.frequencia
     ) {
       showNotification(
         "error",
-        "Preencha campos obrigatórios: Paciente, Medicamento, Data e Frequência",
+        "Preencha campos obrigatórios: Paciente, Medicamento, Farmacêutico, Data e Frequência",
       );
       return;
     }
@@ -116,6 +127,7 @@ export default function CadastroTratamentoScreen() {
       await api.post("/tratamentos", {
         id_paciente: Number(form.idPaciente),
         id_medicamento: Number(form.idMedicamento),
+        id_farmaceutico: Number(form.idFarmaceutico),
         id_usuario_criador: Number(idUsuarioCriador),
         data_inicio: converterDataParaISO(form.dataInicio),
         frequencia: form.frequencia,
@@ -151,6 +163,13 @@ export default function CadastroTratamentoScreen() {
     .map((m) => ({
       label: m.nome_medicamento || "Sem nome",
       value: m.id_medicamento || "",
+    }));
+
+  const farmaceuticosOptions = (farmaceuticos || [])
+    .filter((f) => f)
+    .map((f) => ({
+      label: f.nome || f.email || "Sem nome",
+      value: f.id_farmaceutico || "",
     }));
 
   return (
@@ -189,11 +208,20 @@ export default function CadastroTratamentoScreen() {
           />
 
           <SelectField
-            label="Medicamento"
+            label="Medicamento *"
             placeholder="Selecione o medicamento"
             value={form.idMedicamento}
             options={medicamentosOptions}
             onSelect={(val) => setForm({ ...form, idMedicamento: val })}
+            required
+          />
+
+          <SelectField
+            label="Farmacêutico *"
+            placeholder="Selecione o farmacêutico"
+            value={form.idFarmaceutico}
+            options={farmaceuticosOptions}
+            onSelect={(val) => setForm({ ...form, idFarmaceutico: val })}
             required
           />
 
