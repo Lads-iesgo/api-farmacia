@@ -1,0 +1,19 @@
+import { Router } from 'express';
+import { FarmaceuticoController } from '../controllers/FarmaceuticoController';
+import { autenticacao } from '../middleware/auth';
+
+const router = Router();
+const controller = new FarmaceuticoController();
+
+// Todas as rotas de farmacêuticos requerem autenticação
+router.use(autenticacao);
+
+router.post('/', (req, res) => controller.criar(req, res));
+router.get('/', (req, res) => controller.listar(req, res));
+router.get('/todos', (req, res) => controller.listarTodos(req, res));
+router.get('/buscar', (req, res) => controller.buscar(req, res));
+router.get('/:id', (req, res) => controller.obterPorId(req, res));
+router.put('/:id', (req, res) => controller.atualizar(req, res));
+router.delete('/:id', (req, res) => controller.excluir(req, res));
+
+export default router;
