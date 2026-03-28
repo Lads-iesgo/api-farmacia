@@ -153,7 +153,8 @@ export default function AdesoesScreen() {
     return (
       pacienteNome?.toLowerCase().includes(busca.toLowerCase()) ||
       a.status?.toLowerCase().includes(busca.toLowerCase()) ||
-      formatarData(a.data_prevista).includes(busca)
+      formatarData(a.data_prevista).includes(busca) ||
+      formatarData(a.data_tomada).includes(busca)
     );
   });
 

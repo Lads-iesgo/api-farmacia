@@ -1,5 +1,5 @@
 // ─── Utilitários de formatação compartilhados ───────────────────────────────
-
+export default function formatadores() {}
 /** Formata data ISO ou Date para DD/MM/AAAA */
 export const formatarData = (
   data: string | Date | undefined | null,

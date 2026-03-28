@@ -1,3 +1,4 @@
+// Import dinâmico para expo-notifications
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useState } from "react";
@@ -14,8 +15,53 @@ import FormInput from "../_components/FormInput";
 import Header from "../_components/Header";
 import { useNotification } from "../_components/NotificationContext";
 import SelectField from "../_components/Select";
-import { converterDataParaISO, formatarDataInput } from "../_utils/formatters";
+import {
+  converterDataParaISO,
+  formatarData,
+  formatarDataInput,
+} from "../_utils/formatters";
 import api from "../services/api";
+
+let Notifications: any = null;
+try {
+  Notifications = require("expo-notifications");
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch (error) {
+  console.warn("Expo Notifications ignorado no Expo Go SDK 53:", error);
+}
+
+const extrairHorasFrequencia = (freq: string): number | null => {
+  if (!freq) return null;
+  const lower = freq.toLowerCase();
+  // 1x, 2x, etc
+  if (lower.includes("1x") || lower.includes("uma vez")) return 24;
+  if (lower.includes("2x") || lower.includes("duas vezes")) return 12;
+  if (
+    lower.includes("3x") ||
+    lower.includes("tres vezes") ||
+    lower.includes("três vezes")
+  )
+    return 8;
+  if (lower.includes("4x") || lower.includes("quatro vezes")) return 6;
+
+  const match = freq.match(/\d+/);
+  if (match) {
+    const num = parseInt(match[0], 10);
+    if (num > 0 && lower.includes("vezes")) {
+      return 24 / num; // ex: 2 vezes ao dia -> 12
+    }
+    return num; // ex: 8 em 8 -> 8
+  }
+  return null;
+};
 
 export default function CadastroAdesaoScreen() {
   const router = useRouter();
@@ -28,6 +74,8 @@ export default function CadastroAdesaoScreen() {
   const [form, setForm] = useState({
     id_tratamento: "",
     data_prevista: "",
+    data_tomada: "",
+    hora_tomada_iso: "", // Guarda o timestamp real
   });
 
   React.useEffect(() => {
@@ -81,11 +129,28 @@ export default function CadastroAdesaoScreen() {
       }
     };
     carregarDados();
+
+    // Solicitar permissões de notificação
+    const requestPermissions = async () => {
+      if (!Notifications) return;
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") {
+          showNotification(
+            "error",
+            "Permissão para notificações não concedida.",
+          );
+        }
+      } catch (error) {
+        console.warn("Erro ao requestPermissionsAsync:", error);
+      }
+    };
+    requestPermissions();
   }, []);
 
   const handleCadastrar = async () => {
-    if (!form.id_tratamento || !form.data_prevista) {
-      showNotification("error", "Preencha o tratamento e a data prevista");
+    if (!form.id_tratamento || !form.data_prevista || !form.data_tomada) {
+      showNotification("error", "Preencha o tratamento e as datas previstas");
       return;
     }
 
@@ -101,13 +166,44 @@ export default function CadastroAdesaoScreen() {
         return;
       }
 
-      const payload = {
+      const dataTomadaISO =
+        form.hora_tomada_iso || converterDataParaISO(form.data_tomada);
+
+      const response = {
         id_tratamento: Number(form.id_tratamento),
         id_paciente: Number(tratamentoSelecionado.id_paciente),
         data_prevista: converterDataParaISO(form.data_prevista),
+        data_tomada: dataTomadaISO,
       };
 
-      await api.post("/adesoes", payload);
+      await api.post("/adesoes", response);
+
+      // Agendar notificação se houver frequência
+      const frequenciaText = tratamentoSelecionado.frequencia || "";
+      const horasFrequencia = extrairHorasFrequencia(frequenciaText);
+      if (horasFrequencia && dataTomadaISO && Notifications) {
+        const trigger = new Date(dataTomadaISO);
+        trigger.setHours(trigger.getHours() + horasFrequencia);
+
+        const medicamentoInfo = medicamentos.find(
+          (m) =>
+            String(m.id_medicamento) ===
+            String(tratamentoSelecionado.id_medicamento),
+        );
+        const nomeMed = medicamentoInfo?.nome_medicamento || "Medicamento";
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Hora do Tratamento! 💊",
+            body: `Chegou a hora de tomar: ${nomeMed}.`,
+            sound: true,
+          },
+          trigger: {
+            type: "calendar",
+            date: trigger,
+          } as any,
+        });
+      }
 
       showNotification("success", "Adesão registrada com sucesso!");
       router.push("/adesoes" as any);
@@ -190,6 +286,44 @@ export default function CadastroAdesaoScreen() {
             }
           />
 
+          <View style={styles.dataTomadaContainer}>
+            <View style={{ flex: 1 }}>
+              <FormInput
+                label="Data Tomada *"
+                placeholder="dd/mm/aaaa ou Hora Atual"
+                keyboardType="numeric"
+                value={form.data_tomada}
+                onChangeText={(v) =>
+                  setForm({
+                    ...form,
+                    data_tomada: formatarDataInput(v),
+                    hora_tomada_iso: "",
+                  })
+                }
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.timeButton}
+              onPress={() => {
+                const agora = new Date();
+                const diaMesAno = formatarData(agora) || "";
+                const hora = String(agora.getHours()).padStart(2, "0");
+                const min = String(agora.getMinutes()).padStart(2, "0");
+                setForm({
+                  ...form,
+                  data_tomada: `${diaMesAno} ${hora}:${min}`,
+                  hora_tomada_iso: agora.toISOString(),
+                });
+                showNotification(
+                  "success",
+                  "Hora atual capturada com sucesso!",
+                );
+              }}
+            >
+              <Text style={styles.timeButtonText}>Agora</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
               style={[styles.submitButton, loading && styles.buttonDisabled]}
@@ -255,4 +389,24 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   cancelButtonText: { color: Colors.text, fontSize: 16, fontWeight: "bold" },
+  dataTomadaContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  timeButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginLeft: 12,
+    marginTop: 6, // Para alinhar com o input que tem label
+    alignSelf: "center",
+    height: 52,
+    justifyContent: "center",
+  },
+  timeButtonText: {
+    color: Colors.white,
+    fontWeight: "bold",
+  },
 });
