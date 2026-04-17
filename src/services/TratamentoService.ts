@@ -24,6 +24,10 @@ export interface AtualizarTratamentoDTO {
 
 export class TratamentoService {
   async criar(dados: CriarTratamentoDTO) {
+    if (dados.data_fim && dados.data_fim <= dados.data_inicio) {
+      throw new Error('Data de término deve ser posterior à data de início');
+    }
+
     // Verifica se paciente existe
     const paciente = await prisma.paciente.findUnique({
       where: { id_paciente: dados.id_paciente },
@@ -162,6 +166,10 @@ export class TratamentoService {
 
     if (!tratamento) {
       throw new Error('Tratamento não encontrado');
+    }
+
+    if (dados.data_fim && dados.data_fim <= tratamento.data_inicio) {
+      throw new Error('Data de término deve ser posterior à data de início');
     }
 
     return await prisma.tratamento.update({

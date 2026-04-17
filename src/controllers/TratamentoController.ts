@@ -31,13 +31,26 @@ export class TratamentoController {
         });
       }
 
+      const dtInicio = new Date(data_inicio);
+      if (Number.isNaN(dtInicio.getTime())) {
+        return res.status(400).json({ erro: 'Data de início inválida' });
+      }
+
+      let dtFim: Date | undefined;
+      if (data_fim) {
+        dtFim = new Date(data_fim);
+        if (Number.isNaN(dtFim.getTime())) {
+          return res.status(400).json({ erro: 'Data de término inválida' });
+        }
+      }
+
       const tratamento = await tratamentoService.criar({
         id_paciente,
         id_medicamento,
         id_farmaceutico,
         id_usuario_criador: req.usuario.id_usuario,
-        data_inicio: new Date(data_inicio),
-        data_fim: data_fim ? new Date(data_fim) : undefined,
+        data_inicio: dtInicio,
+        data_fim: dtFim,
         frequencia,
         dosagem_prescrita,
         motivo_tratamento,
@@ -107,8 +120,16 @@ export class TratamentoController {
       const { id } = req.params;
       const { data_fim, frequencia, dosagem_prescrita, motivo_tratamento, instrucoes_especiais, status } = req.body;
 
+      let dtFim: Date | undefined;
+      if (data_fim) {
+        dtFim = new Date(data_fim);
+        if (Number.isNaN(dtFim.getTime())) {
+          return res.status(400).json({ erro: 'Data de término inválida' });
+        }
+      }
+
       const tratamento = await tratamentoService.atualizar(parseInt(id), {
-        data_fim: data_fim ? new Date(data_fim) : undefined,
+        data_fim: dtFim,
         frequencia,
         dosagem_prescrita,
         motivo_tratamento,

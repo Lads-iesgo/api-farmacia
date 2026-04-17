@@ -26,10 +26,18 @@ export class PacienteController {
         });
       }
 
+      let dtNascimento: Date | undefined;
+      if (data_nascimento) {
+        dtNascimento = new Date(data_nascimento);
+        if (Number.isNaN(dtNascimento.getTime())) {
+          return res.status(400).json({ erro: 'Data de nascimento inválida' });
+        }
+      }
+
       const paciente = await pacienteService.criar({
         id_usuario,
         numero_identificacao,
-        data_nascimento: data_nascimento ? new Date(data_nascimento) : undefined,
+        data_nascimento: dtNascimento,
         genero,
         endereco,
         cidade,
@@ -98,9 +106,17 @@ export class PacienteController {
         alergias,
       } = req.body;
 
+      let dtNascimento: Date | undefined;
+      if (data_nascimento) {
+        dtNascimento = new Date(data_nascimento);
+        if (Number.isNaN(dtNascimento.getTime())) {
+          return res.status(400).json({ erro: 'Data de nascimento inválida' });
+        }
+      }
+
       const paciente = await pacienteService.atualizar(parseInt(id), {
         numero_identificacao,
-        data_nascimento: data_nascimento ? new Date(data_nascimento) : undefined,
+        data_nascimento: dtNascimento,
         genero,
         endereco,
         cidade,
