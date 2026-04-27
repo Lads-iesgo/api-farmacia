@@ -293,8 +293,8 @@ export default function CadastroAdesaoScreen() {
           <Text style={styles.formSectionTitle}>Detalhes da adesão</Text>
 
           <SelectField
-            label="Tratamento *"
-            placeholder="Selecione o tratamento"
+            label="Paciente/Medicação *"
+            placeholder="Selecione o paciente/medicação"
             value={form.id_tratamento}
             options={tratamentosOptions}
             onSelect={(v: string) => setForm({ ...form, id_tratamento: v })}
