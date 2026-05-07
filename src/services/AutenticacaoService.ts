@@ -2,6 +2,7 @@ import prisma from '../config/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import EmailService from '../utils/EmailService';
 
 interface CriarUsuarioDTO {
   nome: string;
@@ -108,14 +109,18 @@ export class AutenticacaoService {
   }
 
   async solicitarRecuperacaoSenha(email: string) {
+    console.log('Recebida solicitação de recuperação de senha para o email:', email);
     const usuario = await prisma.usuario.findUnique({
       where: { email },
     });
 
     if (!usuario) {
+      console.log('Usuário não encontrado no banco de dados. Cancelando envio de e-mail por segurança.');
       // Por segurança, não informamos se o email existe ou não
       return { mensagem: 'Se o email existe, um link de recuperação foi enviado' };
     }
+    
+    console.log('Usuário encontrado. Gerando token e preparando envio...');
 
     // Gera token único
     const token = crypto.randomBytes(32).toString('hex');
@@ -131,9 +136,9 @@ export class AutenticacaoService {
       },
     });
 
-    // TODO: Implementar envio de email com link
-    // const linkRecuperacao = `${process.env.RESET_PASSWORD_URL}?token=${token}`;
-    // await enviarEmail(usuario.email, linkRecuperacao);
+    // Envia email de recuperação
+    const linkRecuperacao = `${process.env.RESET_PASSWORD_URL}?token=${token}`;
+    await EmailService.enviarEmailRecuperacaoSenha(usuario.email, linkRecuperacao);
 
     return { mensagem: 'Se o email existe, um link de recuperação foi enviado' };
   }
