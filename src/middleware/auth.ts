@@ -9,6 +9,11 @@ export interface AuthRequest extends Request {
   };
 }
 
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('❌ JWT_SECRET não definido no .env — a API não pode iniciar sem essa variável.');
+}
+
 export const autenticacao = (
   req: AuthRequest,
   res: Response,
@@ -21,7 +26,7 @@ export const autenticacao = (
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'seu_secret') as any;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
     req.usuario = decoded;
     next();
   } catch (error) {
