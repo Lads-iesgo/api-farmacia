@@ -32,7 +32,7 @@ class EmailService {
               </a>
             </p>
             <p>Ou copie e cole o link no seu navegador:</p>
-            <p><a href="${link}">${link}</a></p>
+            <p>${link}</p>
             <p>Este link expira em ${process.env.RESET_TOKEN_EXPIRES_IN || 1} hora(s).</p>
             <p>Se você não solicitou isso, ignore este email.</p>
           </div>
