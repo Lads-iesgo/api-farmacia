@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 
 class EmailService {
   private transporter: nodemailer.Transporter;
@@ -20,7 +20,7 @@ class EmailService {
       await this.transporter.sendMail({
         from: `"Farmácia APP" <${process.env.SMTP_FROM}>`,
         to: para,
-        subject: 'Recuperação de Senha',
+        subject: "Recuperação de Senha",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2>Recuperação de Senha</h2>
@@ -38,10 +38,12 @@ class EmailService {
           </div>
         `,
       });
-      console.log('Email de recuperação enviado para:', para);
+      console.log("Email de recuperação enviado para:", para);
     } catch (error) {
-      console.error('Erro ao enviar email de recuperação:', error);
-      throw new Error('Não foi possível enviar o email de recuperação. Verifique as configurações (Senha de App).');
+      console.error("Erro ao enviar email de recuperação:", error);
+      throw new Error(
+        "Não foi possível enviar o email de recuperação. Verifique as configurações (Senha de App).",
+      );
     }
   }
 }
