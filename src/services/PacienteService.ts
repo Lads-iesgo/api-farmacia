@@ -1,4 +1,4 @@
-import { Genero, Prisma } from "@prisma/client";
+﻿import { Genero, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import prisma from "../config/prisma";
 
@@ -210,6 +210,24 @@ export class PacienteService {
     });
     if (!paciente) throw new Error("Paciente não encontrado");
 
-    await prisma.paciente.delete({ where: { id_paciente } });
+    await prisma.$transaction(async (tx) => {
+      // 1. Deletar notificações do paciente
+      await tx.notificacao.deleteMany({ where: { id_paciente } });
+
+      // 2. Deletar adesões do paciente
+      await tx.adesaoMedicamento.deleteMany({ where: { id_paciente } });
+
+      // 3. Deletar tratamentos do paciente
+      await tx.tratamento.deleteMany({ where: { id_paciente } });
+
+      // 4. Deletar permissões de alunos vinculadas ao paciente
+      await tx.permissaoAluno.deleteMany({ where: { id_paciente } });
+
+      // 5. Deletar o paciente
+      await tx.paciente.delete({ where: { id_paciente } });
+
+      // 6. Deletar o usuário vinculado (criado automaticamente com o paciente)
+      await tx.usuario.delete({ where: { id_usuario: paciente.id_usuario } });
+    });
   }
 }
